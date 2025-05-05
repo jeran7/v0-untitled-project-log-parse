@@ -53,7 +53,8 @@ export const DEFAULT_COLUMNS: ColumnDefinition[] = [
           className += " bg-gray-100 text-gray-800"
       }
 
-      return <span className={className}>{value}</span>
+      // Return the value as a string instead of JSX
+      return value
     },
   },
   {
@@ -66,7 +67,7 @@ export const DEFAULT_COLUMNS: ColumnDefinition[] = [
     visible: true,
     formatter: (value) => {
       if (!value) return "-"
-      return <span className="truncate">{value}</span>
+      return value
     },
     className: "text-gray-600",
   },
@@ -80,7 +81,7 @@ export const DEFAULT_COLUMNS: ColumnDefinition[] = [
     visible: true,
     formatter: (value, log) => {
       if (!value) return log.raw || "-"
-      return <span className="truncate">{value}</span>
+      return value
     },
   },
 ]
