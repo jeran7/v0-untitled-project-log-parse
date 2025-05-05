@@ -652,7 +652,7 @@ export default function TimelineNavigator({ height = 200, className = "" }: Part
         {aggregatedData.points.length === 0 ? (
           <div className="flex items-center justify-center h-full text-gray-500">No log data available</div>
         ) : (
-          <svg ref={svgRef} width="100%" height={dimensions.height} className="timeline-svg" />
+          <svg ref={svgRef} width="100%" height={dimensions.height} className="timeline-svg"></svg>
         )}
       </div>
 
