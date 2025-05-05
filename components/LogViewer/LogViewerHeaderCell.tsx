@@ -86,7 +86,7 @@ export function LogViewerHeaderCell({ column, onResize, index }: LogViewerHeader
             className="absolute right-0 top-0 h-full w-1 cursor-col-resize group"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="h-full w-1 bg-transparent group-hover:bg-teal-500" />
+            <div className="h-full w-1 bg-transparent group-hover:bg-teal-500"></div>
           </div>
         }
         resizeHandles={["e"]}
