@@ -1,19 +1,16 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit"
 
 interface UiState {
-  fileUploadModalOpen: boolean
-  fullscreenMode: boolean
+  isFileUploadModalOpen: boolean
   isSidebarOpen: boolean
   activeTab: string
   theme: "light" | "dark" | "system"
   timeZone: string
   viewMode: "split" | "single" | "correlated"
-  // Add other UI state as needed
 }
 
 const initialState: UiState = {
-  fileUploadModalOpen: false,
-  fullscreenMode: false,
+  isFileUploadModalOpen: false,
   isSidebarOpen: true,
   activeTab: "logs",
   theme: "system",
@@ -26,10 +23,7 @@ const uiSlice = createSlice({
   initialState,
   reducers: {
     setFileUploadModalOpen: (state, action: PayloadAction<boolean>) => {
-      state.fileUploadModalOpen = action.payload
-    },
-    setFullscreenMode: (state, action: PayloadAction<boolean>) => {
-      state.fullscreenMode = action.payload
+      state.isFileUploadModalOpen = action.payload
     },
     setSidebarOpen: (state, action: PayloadAction<boolean>) => {
       state.isSidebarOpen = action.payload
@@ -49,14 +43,7 @@ const uiSlice = createSlice({
   },
 })
 
-export const {
-  setFileUploadModalOpen,
-  setFullscreenMode,
-  setSidebarOpen,
-  setActiveTab,
-  setTheme,
-  setTimeZone,
-  setViewMode,
-} = uiSlice.actions
+export const { setFileUploadModalOpen, setSidebarOpen, setActiveTab, setTheme, setTimeZone, setViewMode } =
+  uiSlice.actions
 
 export default uiSlice.reducer

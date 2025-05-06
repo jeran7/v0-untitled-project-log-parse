@@ -49,13 +49,6 @@ const filesSlice = createSlice({
     deselectFile: (state, action: PayloadAction<string>) => {
       state.selectedFileIds = state.selectedFileIds.filter((id) => id !== action.payload)
     },
-    deleteFile: (state, action: PayloadAction<string>) => {
-      delete state.files[action.payload]
-      delete state.processingStatus[action.payload]
-      delete state.processingProgress[action.payload]
-      delete state.processingError[action.payload]
-      state.selectedFileIds = state.selectedFileIds.filter((id) => id !== action.payload)
-    },
     processFile: (state, action: PayloadAction<File>) => {
       // This is a thunk action, so it doesn't directly modify the state here.
       // The actual state updates are handled by the other reducers in this slice.
@@ -78,7 +71,6 @@ export const {
   fileProcessingError,
   selectFile,
   deselectFile,
-  deleteFile,
   processFile,
   clearFiles,
 } = filesSlice.actions

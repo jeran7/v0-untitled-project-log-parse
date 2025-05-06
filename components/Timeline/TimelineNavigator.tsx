@@ -40,8 +40,6 @@ export default function TimelineNavigator({ height = 200, className = "" }: Part
   const brushRef = useRef<d3.BrushBehavior<unknown>>(null)
   const [dimensions, setDimensions] = useState({ width: 0, height })
   const [localTimeRange, setLocalTimeRange] = useState<TimeSelection | null>(null)
-  const [isInitialRender, setIsInitialRender] = useState(true)
-  const hasSetInitialTimeRange = useRef(false)
 
   // Get data from Redux
   const logs = useSelector((state: RootState) => Object.values(state.logs.entries))
@@ -244,12 +242,9 @@ export default function TimelineNavigator({ height = 200, className = "" }: Part
 
   /**
    * Create the initial time selection if not already set
-   * Using a ref to track if we've already set the initial time range
-   * to prevent infinite updates
    */
   useEffect(() => {
-    if (!timeRange && aggregatedData.points.length > 0 && !hasSetInitialTimeRange.current) {
-      hasSetInitialTimeRange.current = true
+    if (!timeRange && aggregatedData.points.length > 0) {
       dispatch(
         setTimeSelection({
           start: aggregatedData.startTime,

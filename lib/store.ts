@@ -4,7 +4,6 @@ import logsReducer from "@/lib/slices/logsSlice"
 import uiReducer from "@/lib/slices/uiSlice"
 import timelineReducer from "@/lib/slices/timelineSlice"
 import filtersReducer from "@/lib/slices/filtersSlice"
-import analysisReducer from "@/lib/slices/analysisSlice"
 
 export const store = configureStore({
   reducer: {
@@ -13,7 +12,6 @@ export const store = configureStore({
     ui: uiReducer,
     timeline: timelineReducer,
     filters: filtersReducer,
-    analysis: analysisReducer,
   },
   // Increase the maximum size limit for actions to handle large log data
   middleware: (getDefaultMiddleware) =>
@@ -31,9 +29,6 @@ export const store = configureStore({
           "filters/setFilters",
           "filters/saveFilterPreset",
           "filters/applyFilterPreset",
-          "analysis/setTimeSeriesData",
-          "analysis/addDetectedPattern",
-          "analysis/addInsight",
         ],
       },
     }),
