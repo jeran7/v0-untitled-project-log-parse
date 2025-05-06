@@ -14,6 +14,7 @@ import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RefreshCw } from "lucide-re
 export default function TimelineControls() {
   const dispatch = useDispatch()
   const hasInitialized = useRef(false)
+  const isUpdatingTimeRange = useRef(false)
 
   // Get data from Redux store
   const logEntries = useSelector((state: RootState) => state.logs.entries)
@@ -46,13 +47,19 @@ export default function TimelineControls() {
         setGlobalEndTime(endTime)
 
         // Set initial time range if not already set and only once
-        if (!timeRange && !hasInitialized.current) {
+        if (!timeRange && !hasInitialized.current && !isUpdatingTimeRange.current) {
           hasInitialized.current = true
-          dispatch(setTimeRange({ start: startTime, end: endTime }))
+          isUpdatingTimeRange.current = true
+
+          // Use setTimeout to break potential update cycles
+          setTimeout(() => {
+            dispatch(setTimeRange({ start: startTime, end: endTime }))
+            isUpdatingTimeRange.current = false
+          }, 0)
         }
       }
     }
-  }, [logEntries, selectedFileIds, dispatch])
+  }, [logEntries, selectedFileIds, dispatch, timeRange])
 
   // Handle zoom level change
   const handleZoomChange = (newZoomLevel: number[]) => {
@@ -68,7 +75,9 @@ export default function TimelineControls() {
 
   // Update time range based on zoom and position
   const updateTimeRange = (zoom: number, pos: number) => {
-    if (!globalStartTime || !globalEndTime) return
+    if (!globalStartTime || !globalEndTime || isUpdatingTimeRange.current) return
+
+    isUpdatingTimeRange.current = true
 
     const globalRange = globalEndTime.getTime() - globalStartTime.getTime()
     const visibleRange = globalRange * (100 / zoom)
@@ -81,7 +90,11 @@ export default function TimelineControls() {
     const clampedStart = new Date(Math.max(start.getTime(), globalStartTime.getTime()))
     const clampedEnd = new Date(Math.min(end.getTime(), globalEndTime.getTime()))
 
-    dispatch(setTimeRange({ start: clampedStart, end: clampedEnd }))
+    // Use setTimeout to break potential update cycles
+    setTimeout(() => {
+      dispatch(setTimeRange({ start: clampedStart, end: clampedEnd }))
+      isUpdatingTimeRange.current = false
+    }, 0)
   }
 
   // Handle time zone change
@@ -96,6 +109,8 @@ export default function TimelineControls() {
 
   // Move timeline left/right
   const moveTimeline = (direction: "left" | "right") => {
+    if (isUpdatingTimeRange.current) return
+
     const step = 10
     const newPosition = direction === "left" ? Math.max(0, position - step) : Math.min(100, position + step)
 
@@ -105,6 +120,8 @@ export default function TimelineControls() {
 
   // Zoom in/out
   const zoom = (direction: "in" | "out") => {
+    if (isUpdatingTimeRange.current) return
+
     const step = 10
     const newZoomLevel = direction === "in" ? Math.min(200, zoomLevel + step) : Math.max(50, zoomLevel - step)
 
@@ -114,11 +131,27 @@ export default function TimelineControls() {
 
   // Reset timeline
   const resetTimeline = () => {
+    if (isUpdatingTimeRange.current || !globalStartTime || !globalEndTime) return
+
     setZoomLevel(100)
     setPosition(50)
 
-    if (globalStartTime && globalEndTime) {
+    isUpdatingTimeRange.current = true
+
+    // Use setTimeout to break potential update cycles
+    setTimeout(() => {
       dispatch(setTimeRange({ start: globalStartTime, end: globalEndTime }))
+      isUpdatingTimeRange.current = false
+    }, 0)
+  }
+
+  // Safe format timestamp function
+  const safeFormatTimestamp = (timestamp: Date | null | undefined) => {
+    if (!timestamp) return "--"
+    try {
+      return formatTimestamp(timestamp.toISOString(), timeZone, "datetime")
+    } catch (error) {
+      return "--"
     }
   }
 
@@ -156,20 +189,8 @@ export default function TimelineControls() {
 
       <div className="space-y-6">
         <div className="flex items-center justify-between text-sm">
-          <div>
-            {timeRange && globalStartTime ? (
-              <span>{formatTimestamp(timeRange.start.toISOString(), timeZone, "datetime")}</span>
-            ) : (
-              <span>--</span>
-            )}
-          </div>
-          <div>
-            {timeRange && globalEndTime ? (
-              <span>{formatTimestamp(timeRange.end.toISOString(), timeZone, "datetime")}</span>
-            ) : (
-              <span>--</span>
-            )}
-          </div>
+          <div>{timeRange ? <span>{safeFormatTimestamp(timeRange.start)}</span> : <span>--</span>}</div>
+          <div>{timeRange ? <span>{safeFormatTimestamp(timeRange.end)}</span> : <span>--</span>}</div>
         </div>
 
         <div className="flex items-center gap-2">

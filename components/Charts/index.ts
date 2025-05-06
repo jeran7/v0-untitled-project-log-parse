@@ -1,3 +1,5 @@
-export { default as BarChart } from "./BarChart"
-export { default as LineChart } from "./LineChart"
-export { default as PieChart } from "./PieChart"
+import BarChart from "./BarChart"
+import LineChart from "./LineChart"
+import PieChart from "./PieChart"
+
+export { BarChart, LineChart, PieChart }

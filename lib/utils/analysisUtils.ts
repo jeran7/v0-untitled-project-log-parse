@@ -1,6 +1,12 @@
 import { v4 as uuidv4 } from "uuid"
 import type { LogEntry } from "@/types/logs"
-import type { ErrorPattern, TimeSeriesDataPoint, StatisticalSummary } from "@/lib/slices/analysisSlice"
+import type {
+  ErrorPattern,
+  TimeSeriesDataPoint,
+  StatisticalSummary,
+  AnomalyData,
+  AnomalyScorePoint,
+} from "@/lib/slices/analysisSlice"
 import { levenshteinDistance } from "./stringUtils"
 
 /**
@@ -307,6 +313,428 @@ export function detectAnomalies(logs: LogEntry[], sensitivityLevel = 0.7): Error
   })
 
   return patterns
+}
+
+/**
+ * Generate comprehensive anomaly data for visualization
+ * @param logs Array of log entries
+ * @param timeRange Selected time range
+ * @returns AnomalyData object with different types of anomalies and scores
+ */
+export function generateAnomalyData(logs: LogEntry[], timeRange: { start: Date; end: Date }): AnomalyData {
+  // Initialize anomaly data structure
+  const anomalyData: AnomalyData = {
+    timeBasedAnomalies: [],
+    contentAnomalies: [],
+    sequenceAnomalies: [],
+    anomalyScores: [],
+    totalAnomalies: 0,
+  }
+
+  if (logs.length === 0) return anomalyData
+
+  // 1. Detect time-based anomalies
+  const timeBasedAnomalies = detectTimeBasedAnomalies(logs, timeRange)
+  anomalyData.timeBasedAnomalies = timeBasedAnomalies
+
+  // 2. Detect content anomalies
+  const contentAnomalies = detectContentAnomalies(logs)
+  anomalyData.contentAnomalies = contentAnomalies
+
+  // 3. Detect sequence anomalies
+  const sequenceAnomalies = detectSequenceAnomalies(logs)
+  anomalyData.sequenceAnomalies = sequenceAnomalies
+
+  // 4. Generate anomaly scores over time
+  anomalyData.anomalyScores = generateAnomalyScores(logs, timeRange)
+
+  // Calculate total anomalies
+  anomalyData.totalAnomalies = timeBasedAnomalies.length + contentAnomalies.length + sequenceAnomalies.length
+
+  return anomalyData
+}
+
+/**
+ * Detect time-based anomalies in logs
+ * @param logs Array of log entries
+ * @param timeRange Selected time range
+ * @returns Array of time-based anomaly patterns
+ */
+function detectTimeBasedAnomalies(logs: LogEntry[], timeRange: { start: Date; end: Date }): ErrorPattern[] {
+  const patterns: ErrorPattern[] = []
+  const { start, end } = timeRange
+
+  // Group logs by hour
+  const hourlyGroups: Record<string, LogEntry[]> = {}
+
+  logs.forEach((log) => {
+    if (log.timestamp >= start && log.timestamp <= end) {
+      const hour = new Date(log.timestamp).toISOString().substring(0, 13) // YYYY-MM-DDTHH
+      if (!hourlyGroups[hour]) {
+        hourlyGroups[hour] = []
+      }
+      hourlyGroups[hour].push(log)
+    }
+  })
+
+  // Calculate hourly metrics
+  const hourlyMetrics = Object.entries(hourlyGroups).map(([hour, hourLogs]) => {
+    const errorCount = hourLogs.filter(
+      (log) => log.level && ["ERROR", "FATAL", "CRITICAL"].includes(log.level.toUpperCase()),
+    ).length
+
+    const warningCount = hourLogs.filter(
+      (log) => log.level && ["WARNING", "WARN"].includes(log.level.toUpperCase()),
+    ).length
+
+    return {
+      hour,
+      timestamp: new Date(hour),
+      totalLogs: hourLogs.length,
+      errorCount,
+      warningCount,
+      errorRate: hourLogs.length > 0 ? errorCount / hourLogs.length : 0,
+      warningRate: hourLogs.length > 0 ? warningCount / hourLogs.length : 0,
+    }
+  })
+
+  if (hourlyMetrics.length < 2) return patterns
+
+  // Calculate mean and standard deviation for metrics
+  const metricStats = calculateMetricStats(hourlyMetrics)
+
+  // Detect anomalies
+  hourlyMetrics.forEach((hourMetric) => {
+    // Check log volume anomaly
+    if (metricStats.totalLogs.stdDev > 0) {
+      const zScore = Math.abs((hourMetric.totalLogs - metricStats.totalLogs.mean) / metricStats.totalLogs.stdDev)
+      if (zScore > 2) {
+        const anomalyType = hourMetric.totalLogs > metricStats.totalLogs.mean ? "high log volume" : "low log volume"
+
+        const description = `Unusual ${anomalyType} detected (${hourMetric.totalLogs} logs vs normal ${Math.round(metricStats.totalLogs.mean)})`
+
+        const hourLogs = hourlyGroups[hourMetric.hour]
+        const sources = [...new Set(hourLogs.map((log) => log.source).filter(Boolean))]
+
+        patterns.push({
+          id: uuidv4(),
+          type: "anomaly",
+          title: `Time Anomaly: ${anomalyType.charAt(0).toUpperCase() + anomalyType.slice(1)}`,
+          description,
+          severity: "medium",
+          affectedLogs: hourLogs.map((log) => log.id),
+          sources,
+          timestamp: new Date(hourMetric.hour),
+          metadata: {
+            anomalyType: "time",
+            zScore,
+            hourMetric,
+            baselineStats: metricStats,
+          },
+          isBookmarked: false,
+          category: "performance",
+        })
+      }
+    }
+
+    // Check error rate anomaly
+    if (metricStats.errorRate.stdDev > 0 && hourMetric.totalLogs >= 5) {
+      const zScore = Math.abs((hourMetric.errorRate - metricStats.errorRate.mean) / metricStats.errorRate.stdDev)
+      if (zScore > 2) {
+        const anomalyType = hourMetric.errorRate > metricStats.errorRate.mean ? "high error rate" : "low error rate"
+
+        const description = `Unusual ${anomalyType} detected (${(hourMetric.errorRate * 100).toFixed(1)}% vs normal ${(metricStats.errorRate.mean * 100).toFixed(1)}%)`
+
+        const hourLogs = hourlyGroups[hourMetric.hour]
+        const sources = [...new Set(hourLogs.map((log) => log.source).filter(Boolean))]
+
+        patterns.push({
+          id: uuidv4(),
+          type: "anomaly",
+          title: `Time Anomaly: ${anomalyType.charAt(0).toUpperCase() + anomalyType.slice(1)}`,
+          description,
+          severity: "high",
+          affectedLogs: hourLogs.map((log) => log.id),
+          sources,
+          timestamp: new Date(hourMetric.hour),
+          metadata: {
+            anomalyType: "time",
+            zScore,
+            hourMetric,
+            baselineStats: metricStats,
+          },
+          isBookmarked: false,
+          category: "error",
+        })
+      }
+    }
+  })
+
+  return patterns
+}
+
+/**
+ * Detect content anomalies in logs
+ * @param logs Array of log entries
+ * @returns Array of content anomaly patterns
+ */
+function detectContentAnomalies(logs: LogEntry[]): ErrorPattern[] {
+  const patterns: ErrorPattern[] = []
+
+  if (logs.length < 10) return patterns
+
+  // Build word frequency map
+  const wordFrequency: Record<string, number> = {}
+  const logWordMap: Record<string, string[]> = {}
+
+  logs.forEach((log) => {
+    const content = (log.message || log.raw || "").toLowerCase()
+    const words = content.split(/\s+/).filter((word) => word.length > 3)
+
+    logWordMap[log.id] = words
+
+    words.forEach((word) => {
+      wordFrequency[word] = (wordFrequency[word] || 0) + 1
+    })
+  })
+
+  // Find rare words (appearing in less than 1% of logs)
+  const rareWords = Object.entries(wordFrequency)
+    .filter(([word, count]) => count <= logs.length * 0.01 && count > 1)
+    .map(([word]) => word)
+
+  // Find logs with rare words
+  const rareWordLogs: Record<string, LogEntry[]> = {}
+
+  logs.forEach((log) => {
+    const words = logWordMap[log.id] || []
+    const rare = words.filter((word) => rareWords.includes(word))
+
+    if (rare.length > 0) {
+      rare.forEach((word) => {
+        if (!rareWordLogs[word]) {
+          rareWordLogs[word] = []
+        }
+        rareWordLogs[word].push(log)
+      })
+    }
+  })
+
+  // Create anomaly patterns for rare words
+  Object.entries(rareWordLogs).forEach(([word, wordLogs]) => {
+    if (wordLogs.length >= 2) {
+      const sources = [...new Set(wordLogs.map((log) => log.source).filter(Boolean))]
+
+      patterns.push({
+        id: uuidv4(),
+        type: "anomaly",
+        title: `Content Anomaly: Rare Term "${word}"`,
+        description: `Unusual term "${word}" appears in ${wordLogs.length} logs`,
+        severity: "low",
+        affectedLogs: wordLogs.map((log) => log.id),
+        sources,
+        timestamp: wordLogs[0].timestamp,
+        metadata: {
+          anomalyType: "content",
+          rareWord: word,
+          frequency: wordFrequency[word],
+          totalLogs: logs.length,
+        },
+        isBookmarked: false,
+        category: "other",
+      })
+    }
+  })
+
+  return patterns
+}
+
+/**
+ * Detect sequence anomalies in logs
+ * @param logs Array of log entries
+ * @returns Array of sequence anomaly patterns
+ */
+function detectSequenceAnomalies(logs: LogEntry[]): ErrorPattern[] {
+  const patterns: ErrorPattern[] = []
+
+  if (logs.length < 20) return patterns
+
+  // Sort logs by timestamp
+  const sortedLogs = [...logs].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
+
+  // Build transition matrix for log levels
+  const transitions: Record<string, Record<string, number>> = {}
+  const levelCounts: Record<string, number> = {}
+
+  // Initialize with common log levels
+  const commonLevels = ["INFO", "DEBUG", "WARN", "ERROR", "TRACE", "FATAL"]
+  commonLevels.forEach((level) => {
+    transitions[level] = {}
+    levelCounts[level] = 0
+    commonLevels.forEach((nextLevel) => {
+      transitions[level][nextLevel] = 0
+    })
+  })
+
+  // Count transitions
+  for (let i = 0; i < sortedLogs.length - 1; i++) {
+    const currentLog = sortedLogs[i]
+    const nextLog = sortedLogs[i + 1]
+
+    const currentLevel = (currentLog.level || "UNKNOWN").toUpperCase()
+    const nextLevel = (nextLog.level || "UNKNOWN").toUpperCase()
+
+    // Initialize if not exists
+    if (!transitions[currentLevel]) {
+      transitions[currentLevel] = {}
+      levelCounts[currentLevel] = 0
+    }
+
+    if (!transitions[currentLevel][nextLevel]) {
+      transitions[currentLevel][nextLevel] = 0
+    }
+
+    // Count transition
+    transitions[currentLevel][nextLevel]++
+    levelCounts[currentLevel]++
+  }
+
+  // Calculate transition probabilities
+  const transitionProbs: Record<string, Record<string, number>> = {}
+
+  Object.entries(transitions).forEach(([fromLevel, toMap]) => {
+    transitionProbs[fromLevel] = {}
+
+    Object.entries(toMap).forEach(([toLevel, count]) => {
+      const totalFromLevel = levelCounts[fromLevel] || 1
+      transitionProbs[fromLevel][toLevel] = count / totalFromLevel
+    })
+  })
+
+  // Find unusual transitions (probability < 0.05 but occurred at least twice)
+  const unusualTransitions: Array<{ from: string; to: string; prob: number; count: number }> = []
+
+  Object.entries(transitions).forEach(([fromLevel, toMap]) => {
+    Object.entries(toMap).forEach(([toLevel, count]) => {
+      const prob = transitionProbs[fromLevel][toLevel]
+
+      if (prob < 0.05 && count >= 2) {
+        unusualTransitions.push({
+          from: fromLevel,
+          to: toLevel,
+          prob,
+          count,
+        })
+      }
+    })
+  })
+
+  // Create anomaly patterns for unusual transitions
+  unusualTransitions.forEach((transition) => {
+    // Find logs with this transition
+    const affectedLogs: string[] = []
+
+    for (let i = 0; i < sortedLogs.length - 1; i++) {
+      const currentLog = sortedLogs[i]
+      const nextLog = sortedLogs[i + 1]
+
+      const currentLevel = (currentLog.level || "UNKNOWN").toUpperCase()
+      const nextLevel = (nextLog.level || "UNKNOWN").toUpperCase()
+
+      if (currentLevel === transition.from && nextLevel === transition.to) {
+        affectedLogs.push(currentLog.id, nextLog.id)
+      }
+    }
+
+    // Get unique log IDs
+    const uniqueLogIds = [...new Set(affectedLogs)]
+
+    if (uniqueLogIds.length >= 2) {
+      const affectedLogEntries = uniqueLogIds
+        .map((id) => logs.find((log) => log.id === id))
+        .filter(Boolean) as LogEntry[]
+      const sources = [...new Set(affectedLogEntries.map((log) => log.source).filter(Boolean))]
+
+      patterns.push({
+        id: uuidv4(),
+        type: "anomaly",
+        title: `Sequence Anomaly: ${transition.from} → ${transition.to}`,
+        description: `Unusual transition from ${transition.from} to ${transition.to} (${(transition.prob * 100).toFixed(1)}% probability)`,
+        severity: transition.from === "ERROR" || transition.to === "ERROR" ? "high" : "medium",
+        affectedLogs: uniqueLogIds,
+        sources,
+        timestamp: affectedLogEntries[0]?.timestamp || new Date(),
+        metadata: {
+          anomalyType: "sequence",
+          transition,
+          transitionProbs,
+        },
+        isBookmarked: false,
+        category: "other",
+      })
+    }
+  })
+
+  return patterns
+}
+
+/**
+ * Generate anomaly scores over time
+ * @param logs Array of log entries
+ * @param timeRange Selected time range
+ * @returns Array of anomaly score data points
+ */
+function generateAnomalyScores(logs: LogEntry[], timeRange: { start: Date; end: Date }): AnomalyScorePoint[] {
+  const { start, end } = timeRange
+  const scorePoints: AnomalyScorePoint[] = []
+
+  if (logs.length === 0) return scorePoints
+
+  // Determine time interval based on range
+  const rangeMs = end.getTime() - start.getTime()
+  const intervalMs = rangeMs > 86400000 ? 3600000 : 600000 // 1 hour or 10 minutes
+
+  // Create time buckets
+  const bucketCount = Math.ceil(rangeMs / intervalMs)
+
+  for (let i = 0; i < bucketCount; i++) {
+    const bucketStart = new Date(start.getTime() + i * intervalMs)
+    const bucketEnd = new Date(Math.min(bucketStart.getTime() + intervalMs, end.getTime()))
+
+    // Get logs in this bucket
+    const bucketLogs = logs.filter((log) => log.timestamp >= bucketStart && log.timestamp < bucketEnd)
+
+    // Calculate anomaly score for this bucket
+    let anomalyScore = 0
+
+    if (bucketLogs.length > 0) {
+      // Factor 1: Error ratio
+      const errorCount = bucketLogs.filter(
+        (log) => log.level && ["ERROR", "FATAL", "CRITICAL"].includes(log.level.toUpperCase()),
+      ).length
+      const errorRatio = errorCount / bucketLogs.length
+      anomalyScore += errorRatio * 0.5
+
+      // Factor 2: Log volume (compared to average)
+      const avgLogsPerBucket = logs.length / bucketCount
+      const volumeRatio = Math.abs(bucketLogs.length - avgLogsPerBucket) / avgLogsPerBucket
+      anomalyScore += Math.min(volumeRatio, 1) * 0.3
+
+      // Factor 3: Unique sources
+      const uniqueSources = new Set(bucketLogs.map((log) => log.source).filter(Boolean)).size
+      const sourceRatio = uniqueSources / Math.max(1, bucketLogs.length)
+      anomalyScore += sourceRatio * 0.2
+    }
+
+    scorePoints.push({
+      timestamp: bucketStart,
+      score: anomalyScore,
+      count: bucketLogs.length,
+      totalLogs: logs.length,
+    })
+  }
+
+  return scorePoints
 }
 
 /**

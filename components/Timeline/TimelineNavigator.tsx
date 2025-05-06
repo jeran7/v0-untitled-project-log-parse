@@ -40,8 +40,8 @@ export default function TimelineNavigator({ height = 200, className = "" }: Part
   const brushRef = useRef<d3.BrushBehavior<unknown>>(null)
   const [dimensions, setDimensions] = useState({ width: 0, height })
   const [localTimeRange, setLocalTimeRange] = useState<TimeSelection | null>(null)
-  const [isInitialRender, setIsInitialRender] = useState(true)
   const hasSetInitialTimeRange = useRef(false)
+  const timeSelectionDispatchedRef = useRef(false)
 
   // Get data from Redux
   const logs = useSelector((state: RootState) => Object.values(state.logs.entries))
@@ -51,8 +51,8 @@ export default function TimelineNavigator({ height = 200, className = "" }: Part
   const timeZone = useSelector((state: RootState) => state.ui.timeZone)
 
   /**
-   * Memoized calculation of aggregated timeline data
-   * This is a critical performance optimization for large datasets
+   * Memoized calculation of aggregatedData
+   * This prevents recalculation on every render
    */
   const aggregatedData: AggregatedTimelineData = useMemo(() => {
     // Return empty data if no logs
@@ -71,7 +71,25 @@ export default function TimelineNavigator({ height = 200, className = "" }: Part
     }
 
     // Get global time range from logs
-    const sortedTimestamps = logs.map((log) => log.timestamp).sort((a, b) => a.getTime() - b.getTime())
+    const sortedTimestamps = logs
+      .filter((log) => log.timestamp instanceof Date)
+      .map((log) => log.timestamp)
+      .sort((a, b) => a.getTime() - b.getTime())
+
+    if (sortedTimestamps.length === 0) {
+      return {
+        points: [],
+        maxCount: 0,
+        startTime: new Date(),
+        endTime: new Date(),
+        totalLogs: 0,
+        errorCount: 0,
+        warningCount: 0,
+        infoCount: 0,
+        debugCount: 0,
+      }
+    }
+
     const startTime = sortedTimestamps[0]
     const endTime = sortedTimestamps[sortedTimestamps.length - 1]
 
@@ -116,6 +134,9 @@ export default function TimelineNavigator({ height = 200, className = "" }: Part
 
     // Filter logs based on current filters
     const filteredLogs = logs.filter((log) => {
+      // Skip logs without valid timestamps
+      if (!(log.timestamp instanceof Date)) return false
+
       // Apply all enabled filters
       for (const filter of filters) {
         if (!filter.enabled) continue
@@ -163,6 +184,8 @@ export default function TimelineNavigator({ height = 200, className = "" }: Part
 
     // Bin the data into time buckets
     filteredLogs.forEach((log) => {
+      if (!(log.timestamp instanceof Date)) return
+
       const timestamp = log.timestamp
       const bucketTime = Math.floor(timestamp.getTime() / bucketSizeMs) * bucketSizeMs
 
@@ -250,22 +273,33 @@ export default function TimelineNavigator({ height = 200, className = "" }: Part
   useEffect(() => {
     if (!timeRange && aggregatedData.points.length > 0 && !hasSetInitialTimeRange.current) {
       hasSetInitialTimeRange.current = true
+
       const initialTimeSelection = {
         start: aggregatedData.startTime,
         end: aggregatedData.endTime,
       }
 
+      // Set local state first to avoid re-renders
+      setLocalTimeRange(initialTimeSelection)
+
       // Dispatch the action only once
       dispatch(setTimeSelection(initialTimeSelection))
     }
-  }, [aggregatedData.points.length, dispatch])
+  }, [aggregatedData.points.length, aggregatedData.startTime, aggregatedData.endTime, timeRange, dispatch])
 
   /**
    * Handler for time selection change (debounced to prevent excessive updates)
    */
   const handleTimeSelectionChange = useCallback(
     debounce((selection: TimeSelection) => {
-      dispatch(setTimeSelection(selection))
+      if (timeSelectionDispatchedRef.current) return
+      timeSelectionDispatchedRef.current = true
+
+      // Use setTimeout to break the potential update cycle
+      setTimeout(() => {
+        dispatch(setTimeSelection(selection))
+        timeSelectionDispatchedRef.current = false
+      }, 0)
     }, 150),
     [dispatch],
   )
@@ -295,7 +329,10 @@ export default function TimelineNavigator({ height = 200, className = "" }: Part
         return
       }
 
+      // Update local state first
       setLocalTimeRange({ start: startDate, end: endDate })
+
+      // Then dispatch to Redux (debounced)
       handleTimeSelectionChange({ start: startDate, end: endDate })
     },
     [aggregatedData.startTime, aggregatedData.endTime, dimensions.width, handleTimeSelectionChange, dispatch],
@@ -483,7 +520,13 @@ export default function TimelineNavigator({ height = 200, className = "" }: Part
     svg
       .selectAll(".log-bar")
       .on("mouseover", (event, d) => {
-        const formatTime = (date: Date) => formatTimestamp(date.toISOString(), timeZone, "datetime")
+        const formatTime = (date: Date) => {
+          try {
+            return formatTimestamp(date.toISOString(), timeZone, "datetime")
+          } catch (error) {
+            return "Invalid Date"
+          }
+        }
 
         tooltip.style("visibility", "visible").html(`
             <div>
@@ -529,6 +572,7 @@ export default function TimelineNavigator({ height = 200, className = "" }: Part
     const newStart = new Date(center.getTime() - halfDuration)
     const newEnd = new Date(center.getTime() + halfDuration)
 
+    setLocalTimeRange({ start: newStart, end: newEnd })
     dispatch(setTimeSelection({ start: newStart, end: newEnd }))
   }
 
@@ -541,6 +585,7 @@ export default function TimelineNavigator({ height = 200, className = "" }: Part
     const newStart = new Date(center.getTime() - halfDuration)
     const newEnd = new Date(center.getTime() + halfDuration)
 
+    setLocalTimeRange({ start: newStart, end: newEnd })
     dispatch(setTimeSelection({ start: newStart, end: newEnd }))
   }
 
@@ -550,12 +595,13 @@ export default function TimelineNavigator({ height = 200, className = "" }: Part
   const handleReset = () => {
     if (aggregatedData.points.length === 0) return
 
-    dispatch(
-      setTimeSelection({
-        start: aggregatedData.startTime,
-        end: aggregatedData.endTime,
-      }),
-    )
+    const newTimeSelection = {
+      start: aggregatedData.startTime,
+      end: aggregatedData.endTime,
+    }
+
+    setLocalTimeRange(newTimeSelection)
+    dispatch(setTimeSelection(newTimeSelection))
   }
 
   /**
@@ -570,6 +616,7 @@ export default function TimelineNavigator({ height = 200, className = "" }: Part
     const newStart = new Date(timeRange.start.getTime() - moveAmount)
     const newEnd = new Date(timeRange.end.getTime() - moveAmount)
 
+    setLocalTimeRange({ start: newStart, end: newEnd })
     dispatch(setTimeSelection({ start: newStart, end: newEnd }))
   }
 
@@ -582,7 +629,18 @@ export default function TimelineNavigator({ height = 200, className = "" }: Part
     const newStart = new Date(timeRange.start.getTime() + moveAmount)
     const newEnd = new Date(timeRange.end.getTime() + moveAmount)
 
+    setLocalTimeRange({ start: newStart, end: newEnd })
     dispatch(setTimeSelection({ start: newStart, end: newEnd }))
+  }
+
+  // Safe format timestamp function
+  const safeFormatTimestamp = (timestamp: Date | null | undefined, format = "datetime") => {
+    if (!timestamp) return "N/A"
+    try {
+      return formatTimestamp(timestamp.toISOString(), timeZone, format)
+    } catch (error) {
+      return "Invalid Date"
+    }
   }
 
   return (
@@ -685,8 +743,7 @@ export default function TimelineNavigator({ height = 200, className = "" }: Part
         </div>
         {timeRange && (
           <div>
-            Selected: {formatTimestamp(timeRange.start.toISOString(), timeZone, "datetime")} -{" "}
-            {formatTimestamp(timeRange.end.toISOString(), timeZone, "time")}
+            Selected: {safeFormatTimestamp(timeRange.start, "datetime")} - {safeFormatTimestamp(timeRange.end, "time")}
           </div>
         )}
       </div>

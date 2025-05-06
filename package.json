@@ -69,11 +69,11 @@
     "react-resizable": "latest",
     "lodash": "latest",
     "uuid": "latest",
-    "d3": "latest",
     "react-window": "latest",
     "react-virtualized-auto-sizer": "latest",
     "react-error-boundary": "latest",
-    "react-dnd-html5-backend": "latest"
+    "react-dnd-html5-backend": "latest",
+    "d3": "latest"
   },
   "devDependencies": {
     "@types/node": "^22",

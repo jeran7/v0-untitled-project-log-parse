@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useDispatch, useSelector } from "react-redux"
 import type { RootState } from "@/lib/store"
 import { generateStatisticalReport } from "@/lib/thunks/analysisThunks"
@@ -26,6 +26,13 @@ export default function StatisticalDashboard({ className = "" }: { className?: s
   const isAnalyzing = useSelector((state: RootState) => state.analysis.isAnalyzing)
   const analysisProgress = useSelector((state: RootState) => state.analysis.analysisProgress)
   const logs = useSelector((state: RootState) => state.logs.entries)
+
+  // Auto-generate report when logs change
+  useEffect(() => {
+    if (Object.keys(logs).length > 0 && !statisticalSummary && !isAnalyzing) {
+      dispatch(generateStatisticalReport())
+    }
+  }, [logs, statisticalSummary, isAnalyzing, dispatch])
 
   // Handle generating statistical report
   const handleGenerateReport = () => {

@@ -23,12 +23,12 @@ export default function ErrorAnalysisPanel({ className = "" }: { className?: str
   const [searchTerm, setSearchTerm] = useState("")
 
   // Get data from Redux store
-  const errorPatterns = useSelector((state: RootState) => state.analysis.errorPatterns)
-  const errorClusters = useSelector((state: RootState) => state.analysis.errorClusters)
+  const errorPatterns = useSelector((state: RootState) => state.analysis.errorPatterns || [])
+  const errorClusters = useSelector((state: RootState) => state.analysis.errorClusters || [])
   const errorTimeline = useSelector((state: RootState) => state.analysis.errorTimeline)
   const isAnalyzing = useSelector((state: RootState) => state.analysis.isAnalyzing)
   const analysisProgress = useSelector((state: RootState) => state.analysis.analysisProgress)
-  const logs = useSelector((state: RootState) => state.logs.entries)
+  const logs = useSelector((state: RootState) => state.logs.entries || {})
 
   // Handle analyzing errors
   const handleAnalyzeErrors = () => {
@@ -36,22 +36,32 @@ export default function ErrorAnalysisPanel({ className = "" }: { className?: str
   }
 
   // Filter error patterns based on search term
-  const filteredErrorPatterns = errorPatterns.filter(
-    (pattern) =>
-      pattern.pattern.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      pattern.examples.some((ex) => ex.toLowerCase().includes(searchTerm.toLowerCase())),
-  )
+  const filteredErrorPatterns =
+    errorPatterns && Array.isArray(errorPatterns)
+      ? errorPatterns.filter(
+          (pattern) =>
+            pattern.pattern.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (pattern.examples &&
+              Array.isArray(pattern.examples) &&
+              pattern.examples.some((ex) => ex.toLowerCase().includes(searchTerm.toLowerCase()))),
+        )
+      : []
 
   // Filter error clusters based on search term
-  const filteredErrorClusters = errorClusters.filter(
-    (cluster) =>
-      cluster.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      cluster.examples.some((ex) => ex.toLowerCase().includes(searchTerm.toLowerCase())),
-  )
+  const filteredErrorClusters =
+    errorClusters && Array.isArray(errorClusters)
+      ? errorClusters.filter(
+          (cluster) =>
+            cluster.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (cluster.examples &&
+              Array.isArray(cluster.examples) &&
+              cluster.examples.some((ex) => ex.toLowerCase().includes(searchTerm.toLowerCase()))),
+        )
+      : []
 
   // Prepare chart data for error distribution
   const prepareErrorDistributionData = () => {
-    if (!errorPatterns.length) return []
+    if (!errorPatterns || !Array.isArray(errorPatterns) || errorPatterns.length === 0) return []
 
     return errorPatterns.slice(0, 5).map((pattern) => ({
       name: pattern.pattern.length > 20 ? pattern.pattern.substring(0, 20) + "..." : pattern.pattern,
@@ -61,14 +71,18 @@ export default function ErrorAnalysisPanel({ className = "" }: { className?: str
 
   // Prepare pie chart data for error sources
   const prepareErrorSourcesData = () => {
-    if (!errorPatterns.length) return []
+    if (!errorPatterns || !Array.isArray(errorPatterns) || errorPatterns.length === 0) return []
 
     const sourceMap = new Map<string, number>()
 
     errorPatterns.forEach((pattern) => {
-      pattern.sources.forEach((source) => {
-        sourceMap.set(source.source, (sourceMap.get(source.source) || 0) + source.count)
-      })
+      if (pattern.sources && Array.isArray(pattern.sources)) {
+        pattern.sources.forEach((source) => {
+          if (source && source.source) {
+            sourceMap.set(source.source, (sourceMap.get(source.source) || 0) + source.count)
+          }
+        })
+      }
     })
 
     return Array.from(sourceMap.entries())
@@ -79,6 +93,17 @@ export default function ErrorAnalysisPanel({ className = "" }: { className?: str
         value: count,
         color: "#DC2626",
       }))
+  }
+
+  // Safe format timestamp function
+  const safeFormatTimestamp = (timestamp: string | undefined | null) => {
+    if (!timestamp) return "N/A"
+    try {
+      return formatTimestamp(timestamp, "UTC")
+    } catch (error) {
+      console.error("Error formatting timestamp:", error)
+      return "Invalid Date"
+    }
   }
 
   return (
@@ -92,7 +117,7 @@ export default function ErrorAnalysisPanel({ className = "" }: { className?: str
         <div className="flex items-center gap-2">
           <Button
             onClick={handleAnalyzeErrors}
-            disabled={isAnalyzing || Object.keys(logs).length === 0}
+            disabled={isAnalyzing || !logs || Object.keys(logs).length === 0}
             className="bg-red-600 hover:bg-red-700"
           >
             {isAnalyzing ? (
@@ -117,7 +142,7 @@ export default function ErrorAnalysisPanel({ className = "" }: { className?: str
             <Progress value={analysisProgress} className="h-2" />
             <div className="text-center text-xs text-muted-foreground">{analysisProgress}% complete</div>
           </div>
-        ) : errorPatterns.length > 0 ? (
+        ) : errorPatterns && errorPatterns.length > 0 ? (
           <>
             <div className="mb-4">
               <div className="relative">
@@ -155,15 +180,19 @@ export default function ErrorAnalysisPanel({ className = "" }: { className?: str
                           <div className="mb-3">
                             <h4 className="text-xs font-medium mb-2">Examples</h4>
                             <div className="text-xs text-muted-foreground border rounded-md p-2 max-h-24 overflow-y-auto">
-                              {pattern.examples.map((example, i) => (
-                                <div key={i} className="mb-1 last:mb-0 font-mono">
-                                  {example}
-                                </div>
-                              ))}
+                              {pattern.examples && Array.isArray(pattern.examples) ? (
+                                pattern.examples.map((example, i) => (
+                                  <div key={i} className="mb-1 last:mb-0 font-mono">
+                                    {example}
+                                  </div>
+                                ))
+                              ) : (
+                                <div>No examples available</div>
+                              )}
                             </div>
                           </div>
 
-                          {pattern.sources.length > 0 && (
+                          {pattern.sources && pattern.sources.length > 0 && (
                             <div className="mb-3">
                               <h4 className="text-xs font-medium mb-2">Sources</h4>
                               <div className="grid grid-cols-2 gap-2">
@@ -181,9 +210,9 @@ export default function ErrorAnalysisPanel({ className = "" }: { className?: str
                             <div>
                               <h4 className="text-xs font-medium mb-2">Time Distribution</h4>
                               <div className="text-xs">
-                                First seen: {formatTimestamp(pattern.timeDistribution.firstSeen, "UTC")}
+                                First seen: {safeFormatTimestamp(pattern.timeDistribution.firstSeen)}
                                 <br />
-                                Last seen: {formatTimestamp(pattern.timeDistribution.lastSeen, "UTC")}
+                                Last seen: {safeFormatTimestamp(pattern.timeDistribution.lastSeen)}
                               </div>
                             </div>
                           )}
@@ -214,11 +243,15 @@ export default function ErrorAnalysisPanel({ className = "" }: { className?: str
                           <div className="mb-3">
                             <h4 className="text-xs font-medium mb-2">Examples</h4>
                             <div className="text-xs text-muted-foreground border rounded-md p-2 max-h-24 overflow-y-auto">
-                              {cluster.examples.map((example, i) => (
-                                <div key={i} className="mb-1 last:mb-0 font-mono">
-                                  {example}
-                                </div>
-                              ))}
+                              {cluster.examples && Array.isArray(cluster.examples) ? (
+                                cluster.examples.map((example, i) => (
+                                  <div key={i} className="mb-1 last:mb-0 font-mono">
+                                    {example}
+                                  </div>
+                                ))
+                              ) : (
+                                <div>No examples available</div>
+                              )}
                             </div>
                           </div>
 

@@ -1,62 +1,80 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit"
 
-interface UiState {
+// Add fileCleanupModalOpen to the UIState interface
+interface UIState {
+  sidebarOpen: boolean
   fileUploadModalOpen: boolean
+  fileCleanupModalOpen: boolean
   fullscreenMode: boolean
-  isSidebarOpen: boolean
-  activeTab: string
   theme: "light" | "dark" | "system"
   timeZone: string
-  viewMode: "split" | "single" | "correlated"
-  // Add other UI state as needed
+  viewMode: "correlated" | "split" | "single"
+  isFullscreen: boolean
 }
 
-const initialState: UiState = {
+// Update the initialState to include fileCleanupModalOpen
+const initialState: UIState = {
+  sidebarOpen: true,
   fileUploadModalOpen: false,
+  fileCleanupModalOpen: false,
   fullscreenMode: false,
-  isSidebarOpen: true,
-  activeTab: "logs",
   theme: "system",
   timeZone: "UTC",
   viewMode: "correlated",
+  isFullscreen: false,
 }
 
-const uiSlice = createSlice({
+// Add the setFileCleanupModalOpen action
+export const uiSlice = createSlice({
   name: "ui",
   initialState,
   reducers: {
+    toggleSidebar: (state) => {
+      state.sidebarOpen = !state.sidebarOpen
+    },
+    setSidebarOpen: (state, action: PayloadAction<boolean>) => {
+      state.sidebarOpen = action.payload
+    },
     setFileUploadModalOpen: (state, action: PayloadAction<boolean>) => {
       state.fileUploadModalOpen = action.payload
     },
-    setFullscreenMode: (state, action: PayloadAction<boolean>) => {
-      state.fullscreenMode = action.payload
+    setFileCleanupModalOpen: (state, action: PayloadAction<boolean>) => {
+      state.fileCleanupModalOpen = action.payload
     },
-    setSidebarOpen: (state, action: PayloadAction<boolean>) => {
-      state.isSidebarOpen = action.payload
+    toggleFullscreenMode: (state) => {
+      state.fullscreenMode = !state.fullscreenMode
+      state.isFullscreen = !state.isFullscreen
     },
-    setActiveTab: (state, action: PayloadAction<string>) => {
-      state.activeTab = action.payload
-    },
-    setTheme: (state, action: PayloadAction<UiState["theme"]>) => {
+    setTheme: (state, action: PayloadAction<"light" | "dark" | "system">) => {
       state.theme = action.payload
     },
     setTimeZone: (state, action: PayloadAction<string>) => {
       state.timeZone = action.payload
     },
-    setViewMode: (state, action: PayloadAction<UiState["viewMode"]>) => {
+    setViewMode: (state, action: PayloadAction<"correlated" | "split" | "single">) => {
       state.viewMode = action.payload
+    },
+    setIsFullscreen: (state, action: PayloadAction<boolean>) => {
+      state.isFullscreen = action.payload
     },
   },
 })
 
+// Export the new action
 export const {
-  setFileUploadModalOpen,
-  setFullscreenMode,
+  toggleSidebar,
   setSidebarOpen,
-  setActiveTab,
+  setFileUploadModalOpen,
+  setFileCleanupModalOpen,
+  toggleFullscreenMode,
   setTheme,
   setTimeZone,
   setViewMode,
+  setIsFullscreen,
 } = uiSlice.actions
 
 export default uiSlice.reducer
+
+// Add these lines after the existing exports
+export const setUploadModalOpen = setFileUploadModalOpen
+export const setCleanupModalOpen = setFileCleanupModalOpen

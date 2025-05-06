@@ -1,168 +1,124 @@
 /**
- * Normalize a timestamp string to a UTC Date object
- * @param timestamp Timestamp string in various formats
+ * Utility functions for working with timestamps and time ranges
  */
-export function normalizeTimestamp(timestamp: string | undefined | null): string {
-  // Return current time if timestamp is undefined or null
-  if (timestamp === undefined || timestamp === null) {
-    console.warn("Received undefined or null timestamp, using current time")
-    return new Date().toISOString()
-  }
-
-  try {
-    // Handle common timestamp formats
-    let date: Date
-
-    // Check if timestamp is already a valid ISO string
-    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/.test(timestamp)) {
-      date = new Date(timestamp)
-    }
-    // Handle "YYYY-MM-DD HH:MM:SS" format
-    else if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?$/.test(timestamp)) {
-      date = new Date(timestamp.replace(" ", "T") + "Z")
-    }
-    // Handle Unix timestamp (seconds)
-    else if (/^\d{10}$/.test(timestamp)) {
-      date = new Date(Number.parseInt(timestamp) * 1000)
-    }
-    // Handle Unix timestamp (milliseconds)
-    else if (/^\d{13}$/.test(timestamp)) {
-      date = new Date(Number.parseInt(timestamp))
-    }
-    // Handle MM/DD/YYYY format
-    else if (/^\d{1,2}\/\d{1,2}\/\d{4}/.test(timestamp)) {
-      date = new Date(timestamp)
-    }
-    // Default fallback
-    else {
-      date = new Date(timestamp)
-    }
-
-    // Check if the date is valid
-    if (isNaN(date.getTime())) {
-      console.warn(`Invalid timestamp format: ${timestamp}`)
-      return new Date().toISOString()
-    }
-
-    // Return ISO string in UTC
-    return date.toISOString()
-  } catch (error) {
-    console.error(`Error normalizing timestamp: ${timestamp}`, error)
-    return new Date().toISOString()
-  }
-}
 
 /**
- * Format a timestamp for display based on the user's timezone preference
+ * Format a timestamp string according to the specified format
  * @param timestamp ISO timestamp string
- * @param timeZone Target timezone (default: UTC)
- * @param format Display format (default: 'full')
+ * @param timeZone Time zone to use for formatting
+ * @param format Format to use (datetime, date, time)
+ * @returns Formatted timestamp string
  */
 export function formatTimestamp(
   timestamp: string | undefined | null,
   timeZone = "UTC",
-  format: "full" | "date" | "time" | "datetime" = "full",
+  format: "datetime" | "date" | "time" = "datetime",
 ): string {
-  // Return empty string if timestamp is undefined or null
-  if (timestamp === undefined || timestamp === null) {
+  if (!timestamp) {
     console.warn("Received undefined or null timestamp in formatTimestamp")
-    return ""
+    return "Invalid Date"
   }
 
   try {
     const date = new Date(timestamp)
 
-    // Check if date is valid before formatting
+    // Check if date is valid
     if (isNaN(date.getTime())) {
-      console.warn(`Invalid timestamp for formatting: ${timestamp}`)
-      return timestamp.toString()
+      console.warn("Invalid timestamp for formatting:", timestamp)
+      return "Invalid Date"
     }
 
-    // Options for different formats
-    let options: Intl.DateTimeFormatOptions
+    const options: Intl.DateTimeFormatOptions = {
+      timeZone,
+    }
 
     switch (format) {
+      case "datetime":
+        options.year = "numeric"
+        options.month = "short"
+        options.day = "numeric"
+        options.hour = "2-digit"
+        options.minute = "2-digit"
+        options.second = "2-digit"
+        break
       case "date":
-        options = {
-          year: "numeric",
-          month: "short",
-          day: "numeric",
-          timeZone,
-        }
+        options.year = "numeric"
+        options.month = "short"
+        options.day = "numeric"
         break
       case "time":
-        options = {
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-          fractionalSecondDigits: 3,
-          timeZone,
-        }
+        options.hour = "2-digit"
+        options.minute = "2-digit"
+        options.second = "2-digit"
         break
-      case "datetime":
-        options = {
-          year: "numeric",
-          month: "short",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-          timeZone,
-        }
-        break
-      case "full":
-      default:
-        options = {
-          year: "numeric",
-          month: "short",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-          fractionalSecondDigits: 3,
-          timeZone,
-        }
     }
 
     return new Intl.DateTimeFormat("en-US", options).format(date)
   } catch (error) {
-    console.error(`Error formatting timestamp: ${timestamp}`, error)
-    return String(timestamp)
+    console.error("Error formatting timestamp:", error)
+    return "Invalid Date"
   }
 }
 
 /**
- * Calculate the time range for a set of logs
- * @param timestamps Array of ISO timestamp strings
+ * Normalize a timestamp to a standard format
+ * @param timestamp Timestamp to normalize
+ * @returns Normalized timestamp
  */
-export function calculateTimeRange(timestamps: string[]): { start: string; end: string } {
-  if (!timestamps.length) {
-    return {
-      start: new Date().toISOString(),
-      end: new Date().toISOString(),
+export function normalizeTimestamp(timestamp: string | Date | undefined | null): string | null {
+  if (!timestamp) return null
+
+  try {
+    if (typeof timestamp === "string") {
+      // Try to parse the string as a date
+      const date = new Date(timestamp)
+
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        console.warn("Invalid string timestamp for normalization:", timestamp)
+        return null
+      }
+
+      return date.toISOString()
+    } else if (timestamp instanceof Date) {
+      // Check if date is valid
+      if (isNaN(timestamp.getTime())) {
+        console.warn("Invalid Date object for normalization")
+        return null
+      }
+
+      return timestamp.toISOString()
     }
+
+    // If we get here, the timestamp is not a string or Date
+    console.warn("Timestamp is neither string nor Date:", typeof timestamp)
+    return null
+  } catch (error) {
+    console.error("Error normalizing timestamp:", error)
+    return null
   }
+}
 
-  // Convert all timestamps to Date objects, filtering out invalid dates
-  const dates = timestamps
-    .map((ts) => (ts ? new Date(ts) : null))
-    .filter((date): date is Date => date !== null && !isNaN(date.getTime()))
+/**
+ * Parse a timestamp string into a Date object
+ * @param timestamp Timestamp string to parse
+ * @returns Date object or null if parsing fails
+ */
+export function parseTimestamp(timestamp: string | undefined | null): Date | null {
+  if (!timestamp) return null
 
-  // If no valid dates, return current time
-  if (dates.length === 0) {
-    const now = new Date()
-    return {
-      start: now.toISOString(),
-      end: now.toISOString(),
+  try {
+    const date = new Date(timestamp)
+
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      console.warn("Invalid timestamp for parsing:", timestamp)
+      return null
     }
-  }
 
-  // Find min and max dates
-  const start = new Date(Math.min(...dates.map((d) => d.getTime())))
-  const end = new Date(Math.max(...dates.map((d) => d.getTime())))
-
-  return {
-    start: start.toISOString(),
-    end: end.toISOString(),
+    return date
+  } catch (error) {
+    console.error("Error parsing timestamp:", error)
+    return null
   }
 }

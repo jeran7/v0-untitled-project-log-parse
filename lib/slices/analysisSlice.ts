@@ -24,6 +24,21 @@ export interface TimeSeriesDataPoint {
   sources: Set<string>
 }
 
+export interface AnomalyScorePoint {
+  timestamp: Date
+  score: number
+  count: number
+  totalLogs: number
+}
+
+export interface AnomalyData {
+  timeBasedAnomalies: ErrorPattern[]
+  contentAnomalies: ErrorPattern[]
+  sequenceAnomalies: ErrorPattern[]
+  anomalyScores: AnomalyScorePoint[]
+  totalAnomalies: number
+}
+
 export interface StatisticalSummary {
   totalLogs: number
   errorCount: number
@@ -52,6 +67,10 @@ interface AnalysisState {
   timeSeriesData: TimeSeriesDataPoint[]
   statisticalSummary: StatisticalSummary | null
 
+  // Anomaly Detection
+  anomalyData: AnomalyData | null
+  anomalySensitivity: number
+
   // Insights
   insights: ErrorPattern[]
   insightFeedback: InsightFeedback[]
@@ -79,6 +98,9 @@ const initialState: AnalysisState = {
 
   timeSeriesData: [],
   statisticalSummary: null,
+
+  anomalyData: null,
+  anomalySensitivity: 0.7,
 
   insights: [],
   insightFeedback: [],
@@ -134,6 +156,15 @@ const analysisSlice = createSlice({
       state.statisticalSummary = action.payload
     },
 
+    // Anomaly Detection
+    setAnomalyData: (state, action: PayloadAction<AnomalyData>) => {
+      state.anomalyData = action.payload
+    },
+
+    setAnomalySensitivity: (state, action: PayloadAction<number>) => {
+      state.anomalySensitivity = action.payload
+    },
+
     // Insights
     addInsight: (state, action: PayloadAction<ErrorPattern>) => {
       state.insights.push(action.payload)
@@ -185,6 +216,8 @@ export const {
   togglePatternBookmark,
   setTimeSeriesData,
   setStatisticalSummary,
+  setAnomalyData,
+  setAnomalySensitivity,
   addInsight,
   clearInsights,
   addInsightFeedback,

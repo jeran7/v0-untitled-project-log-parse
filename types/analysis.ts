@@ -1,4 +1,4 @@
-import type { ErrorPattern, TimeSeriesDataPoint, StatisticalSummary } from "@/lib/slices/analysisSlice"
+import type { ErrorPattern, TimeSeriesDataPoint, StatisticalSummary, AnomalyData } from "@/lib/slices/analysisSlice"
 
 export interface ErrorAnalysisProps {
   logs: Record<string, any>
@@ -38,6 +38,7 @@ export interface AnomalyDetectionProps {
   timeRange: { start: Date; end: Date } | null
   sensitivityLevel: number
   className?: string
+  onAnomalyDetected?: (anomaly: ErrorPattern) => void
 }
 
 export interface TimeSeriesAnalysisProps {
@@ -89,5 +90,14 @@ export interface OutlierDetectionProps {
 }
 
 export interface AnalysisDashboardProps {
+  className?: string
+}
+
+export interface AnomalyDetectionPanelProps {
+  anomalyData: AnomalyData | null
+  sensitivity: number
+  onSensitivityChange: (value: number) => void
+  onRunAnalysis: () => void
+  isAnalyzing: boolean
   className?: string
 }

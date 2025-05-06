@@ -9,6 +9,7 @@ import ErrorAnalysisPanel from "./ErrorAnalysisPanel"
 import StatisticalDashboard from "./StatisticalDashboard"
 import InsightsPanel from "./InsightsPanel"
 import SecurityAnalysisPanel from "./SecurityAnalysisPanel"
+import AnomalyDetectionPanel from "./AnomalyDetectionPanel"
 
 export default function AnalysisDashboard() {
   const [activeTab, setActiveTab] = useState("insights")
@@ -21,6 +22,7 @@ export default function AnalysisDashboard() {
           <div className="border-b px-4">
             <TabsList className="h-12">
               <TabsTrigger value="insights">Insights</TabsTrigger>
+              <TabsTrigger value="anomalies">Anomalies</TabsTrigger>
               <TabsTrigger value="errors">Error Analysis</TabsTrigger>
               <TabsTrigger value="security">Security Analysis</TabsTrigger>
               <TabsTrigger value="statistics">Statistics</TabsTrigger>
@@ -30,6 +32,10 @@ export default function AnalysisDashboard() {
           <div className="flex-1 overflow-auto p-4">
             <TabsContent value="insights" className="mt-0 h-full">
               <InsightsPanel className="h-full" />
+            </TabsContent>
+
+            <TabsContent value="anomalies" className="mt-0 h-full">
+              <AnomalyDetectionPanel className="h-full" />
             </TabsContent>
 
             <TabsContent value="errors" className="mt-0 h-full">
