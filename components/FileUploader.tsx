@@ -4,7 +4,7 @@ import type React from "react"
 
 import { useState, useRef } from "react"
 import { useDispatch } from "react-redux"
-import { processFile } from "@/lib/slices/filesSlice"
+import { processFile } from "@/lib/thunks/fileThunks"
 import { setFileUploadModalOpen } from "@/lib/slices/uiSlice"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
@@ -76,10 +76,14 @@ export default function FileUploader() {
   }
 
   const handleUpload = () => {
+    // Process each file
     files.forEach((file) => {
+      console.log("Processing file:", file.name)
+      // @ts-ignore - processFile is a thunk
       dispatch(processFile(file))
     })
 
+    // Close the modal
     dispatch(setFileUploadModalOpen(false))
   }
 

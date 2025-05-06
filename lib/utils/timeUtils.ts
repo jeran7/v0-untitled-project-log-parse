@@ -23,6 +23,10 @@ export function normalizeTimestamp(timestamp: string): string {
     else if (/^\d{13}$/.test(timestamp)) {
       date = new Date(Number.parseInt(timestamp))
     }
+    // Handle MM/DD/YYYY format
+    else if (/^\d{1,2}\/\d{1,2}\/\d{4}/.test(timestamp)) {
+      date = new Date(timestamp)
+    }
     // Default fallback
     else {
       date = new Date(timestamp)
