@@ -171,6 +171,28 @@ function parseLogLine(line: string) {
   // Clean up the message
   message = message.trim()
 
+  // If no timestamp was found, try to find a date pattern
+  if (!timestampMatch) {
+    const dateRegex = /\b(\d{1,2}\/\d{1,2}\/\d{2,4}|\d{1,2}-\d{1,2}-\d{2,4})\b/
+    const dateMatch = line.match(dateRegex)
+
+    if (dateMatch) {
+      const timeRegex = /\b(\d{1,2}:\d{1,2}(?::\d{1,2})?(?:\s*[AP]M)?)\b/i
+      const timeMatch = line.match(timeRegex)
+
+      if (timeMatch) {
+        const dateTimeStr = `${dateMatch[1]} ${timeMatch[1]}`
+        return {
+          timestamp: new Date(dateTimeStr).toISOString(),
+          level: levelMatch ? levelMatch[1].toUpperCase() : undefined,
+          source: sourceMatch ? sourceMatch[1] || sourceMatch[2] : undefined,
+          message,
+          fields,
+        }
+      }
+    }
+  }
+
   return {
     timestamp: timestampMatch ? timestampMatch[1] : new Date().toISOString(),
     level: levelMatch ? levelMatch[1].toUpperCase() : undefined,

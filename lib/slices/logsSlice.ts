@@ -61,6 +61,11 @@ const logsSlice = createSlice({
 
       // Add entries to normalized store
       entries.forEach((entry) => {
+        // Ensure timestamp is a Date object
+        if (typeof entry.timestamp === "string") {
+          entry.timestamp = new Date(entry.timestamp)
+        }
+
         state.entries[entry.id] = entry
 
         // Update timestamp index

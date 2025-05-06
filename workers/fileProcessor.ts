@@ -46,7 +46,9 @@ async function processFile(file: File, fileId: string) {
       timeIndex: {} as Record<string, number[]>,
       levelIndex: {} as Record<string, number[]>,
       sourceIndex: {} as Record<string, number[]>,
+      // Collect all chunk results
     }
+    const chunkResults: ChunkProcessingResult[] = []
 
     // Calculate chunk size (5MB)
     const chunkSize = 5 * 1024 * 1024
@@ -80,6 +82,9 @@ async function processFile(file: File, fileId: string) {
       // Update metadata and indexes
       updateMetadataAndIndexes(metadata, indexes, chunkResult)
 
+      // Save chunk result
+      chunkResults.push(chunkResult)
+
       // Report progress
       ctx.postMessage({
         type: "PROGRESS",
@@ -103,6 +108,9 @@ async function processFile(file: File, fileId: string) {
       )
 
       updateMetadataAndIndexes(metadata, indexes, lastChunkResult)
+
+      // Save chunk result
+      chunkResults.push(lastChunkResult)
     }
 
     // Send completed message with processed data
@@ -119,6 +127,8 @@ async function processFile(file: File, fileId: string) {
           },
           indexes,
         },
+        // Add the log entries to the payload
+        logEntries: chunkResults.flatMap((result) => result.logEntries),
       },
     })
   } catch (error) {

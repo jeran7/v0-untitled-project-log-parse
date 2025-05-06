@@ -63,17 +63,17 @@
     "@testing-library/dom": "latest",
     "@types/hoist-non-react-statics": "latest",
     "@reduxjs/toolkit": "latest",
-    "uuid": "latest",
     "@testing-library/react": "latest",
     "redux-mock-store": "latest",
+    "uuid": "latest",
     "d3": "latest",
     "lodash": "latest",
+    "react-dnd": "latest",
+    "react-resizable": "latest",
     "react-window": "latest",
     "react-virtualized-auto-sizer": "latest",
     "react-error-boundary": "latest",
-    "react-dnd": "latest",
-    "react-dnd-html5-backend": "latest",
-    "react-resizable": "latest"
+    "react-dnd-html5-backend": "latest"
   },
   "devDependencies": {
     "@types/node": "^22",

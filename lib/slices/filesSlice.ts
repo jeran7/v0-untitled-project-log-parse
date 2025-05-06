@@ -1,5 +1,5 @@
-import { createSlice, createAsyncThunk, type PayloadAction } from "@reduxjs/toolkit"
-import type { FileMetadata, ProcessedFile } from "@/types/files"
+import { createSlice, type PayloadAction } from "@reduxjs/toolkit"
+import type { FileMetadata } from "@/types/files"
 
 interface FilesState {
   files: Record<string, FileMetadata>
@@ -17,88 +17,41 @@ const initialState: FilesState = {
   selectedFileIds: [],
 }
 
-// Async thunk for file processing
-export const processFile = createAsyncThunk("files/processFile", async (file: File, { dispatch }) => {
-  const fileId = crypto.randomUUID()
-
-  // Create a file metadata object
-  const fileMetadata: FileMetadata = {
-    id: fileId,
-    name: file.name,
-    size: file.size,
-    type: file.type,
-    lastModified: file.lastModified,
-    totalChunks: Math.ceil(file.size / (5 * 1024 * 1024)), // 5MB chunks
-  }
-
-  // Update the store with the file metadata
-  dispatch(addFile(fileMetadata))
-
-  // Start processing the file in the background
-  const worker = new Worker(new URL("@/workers/fileProcessor.ts", import.meta.url))
-
-  worker.onmessage = (event) => {
-    const { type, payload } = event.data
-
-    switch (type) {
-      case "PROGRESS":
-        dispatch(updateProcessingProgress({ fileId, progress: payload.progress }))
-        break
-      case "COMPLETED":
-        dispatch(fileProcessed({ fileId, processedData: payload.processedData }))
-        break
-      case "ERROR":
-        dispatch(processingError({ fileId, error: payload.error }))
-        break
-    }
-  }
-
-  // Send the file to the worker for processing
-  worker.postMessage({ type: "PROCESS_FILE", payload: { file, fileId } })
-
-  return fileMetadata
-})
-
 const filesSlice = createSlice({
   name: "files",
   initialState,
   reducers: {
-    addFile: (state, action: PayloadAction<FileMetadata>) => {
-      const file = action.payload
-      state.files[file.id] = file
-      state.processingStatus[file.id] = "idle"
-      state.processingProgress[file.id] = 0
-      state.processingError[file.id] = null
+    fileAdded: (state, action: PayloadAction<FileMetadata>) => {
+      state.files[action.payload.id] = action.payload
+      state.processingStatus[action.payload.id] = "idle"
+      state.processingProgress[action.payload.id] = 0
+      state.processingError[action.payload.id] = null
     },
-    updateProcessingProgress: (state, action: PayloadAction<{ fileId: string; progress: number }>) => {
-      const { fileId, progress } = action.payload
-      state.processingStatus[fileId] = "processing"
-      state.processingProgress[fileId] = progress
+    fileProcessingStarted: (state, action: PayloadAction<string>) => {
+      state.processingStatus[action.payload] = "processing"
+      state.processingProgress[action.payload] = 0
     },
-    fileProcessed: (state, action: PayloadAction<{ fileId: string; processedData: ProcessedFile }>) => {
-      const { fileId, processedData } = action.payload
+    fileProcessingProgress: (state, action: PayloadAction<{ fileId: string; progress: number }>) => {
+      state.processingProgress[action.payload.fileId] = action.payload.progress
+    },
+    fileProcessingCompleted: (state, action: PayloadAction<{ fileId: string; metadata: Partial<FileMetadata> }>) => {
+      const { fileId, metadata } = action.payload
       state.processingStatus[fileId] = "completed"
-      state.processingProgress[fileId] = 100
-      // Update file metadata with processed information
-      state.files[fileId] = {
-        ...state.files[fileId],
-        ...processedData.metadata,
-      }
+      state.files[fileId] = { ...state.files[fileId], ...metadata }
     },
-    processingError: (state, action: PayloadAction<{ fileId: string; error: string }>) => {
-      const { fileId, error } = action.payload
-      state.processingStatus[fileId] = "error"
-      state.processingError[fileId] = error
+    fileProcessingError: (state, action: PayloadAction<{ fileId: string; error: string }>) => {
+      state.processingStatus[action.payload.fileId] = "error"
+      state.processingError[action.payload.fileId] = action.payload.error
     },
     selectFile: (state, action: PayloadAction<string>) => {
-      const fileId = action.payload
-      if (!state.selectedFileIds.includes(fileId)) {
-        state.selectedFileIds.push(fileId)
-      }
+      state.selectedFileIds.push(action.payload)
     },
     deselectFile: (state, action: PayloadAction<string>) => {
-      const fileId = action.payload
-      state.selectedFileIds = state.selectedFileIds.filter((id) => id !== fileId)
+      state.selectedFileIds = state.selectedFileIds.filter((id) => id !== action.payload)
+    },
+    processFile: (state, action: PayloadAction<File>) => {
+      // This is a thunk action, so it doesn't directly modify the state here.
+      // The actual state updates are handled by the other reducers in this slice.
     },
     clearFiles: (state) => {
       state.files = {}
@@ -111,12 +64,14 @@ const filesSlice = createSlice({
 })
 
 export const {
-  addFile,
-  updateProcessingProgress,
-  fileProcessed,
-  processingError,
+  fileAdded,
+  fileProcessingStarted,
+  fileProcessingProgress,
+  fileProcessingCompleted,
+  fileProcessingError,
   selectFile,
   deselectFile,
+  processFile,
   clearFiles,
 } = filesSlice.actions
 
