@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { useDispatch, useSelector } from "react-redux"
 import type { RootState } from "@/lib/store"
 import { setFileUploadModalOpen } from "@/lib/slices/uiSlice"
@@ -14,17 +14,22 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Upload, SplitSquareVertical, Layers } from "lucide-react"
 import TimelineVisualization from "@/components/Timeline/TimelineVisualization"
 import AdvancedFilterPanel from "@/components/Filters/AdvancedFilterPanel"
+import LogRemovalPanel from "@/components/LogRemoval/LogRemovalPanel"
+import FullscreenToggle from "@/components/FullscreenToggle"
 
 export default function LogVisualizationDashboard() {
   const dispatch = useDispatch()
+  const dashboardRef = useRef<HTMLDivElement>(null)
   const isFileUploadModalOpen = useSelector((state: RootState) => state.ui.isFileUploadModalOpen)
   const files = useSelector((state: RootState) => state.files.files)
   const selectedFileIds = useSelector((state: RootState) => state.files.selectedFileIds)
   const viewMode = useSelector((state: RootState) => state.ui.viewMode)
   const logEntries = useSelector((state: RootState) => state.logs.entries)
+  const removedCount = useSelector((state: RootState) => state.logs.removedCount)
   const timelineSelection = useSelector((state: RootState) => state.timeline.selection)
   const jumpToTimestamp = useSelector((state: RootState) => state.timeline.jumpToTimestamp)
   const [activeTab, setActiveTab] = useState("correlated")
+  const [activeSidebarTab, setActiveSidebarTab] = useState("filters")
 
   const handleOpenFileUploadModal = () => {
     dispatch(setFileUploadModalOpen(true))
@@ -64,13 +69,16 @@ export default function LogVisualizationDashboard() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)] gap-4">
+    <div ref={dashboardRef} className="flex flex-col h-[calc(100vh-8rem)] gap-4">
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-semibold text-teal-700">Xage Security Log Visualization</h2>
-        <Button onClick={handleOpenFileUploadModal} className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700">
-          <Upload size={16} />
-          Upload Logs
-        </Button>
+        <div className="flex items-center gap-2">
+          <FullscreenToggle targetRef={dashboardRef} />
+          <Button onClick={handleOpenFileUploadModal} className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700">
+            <Upload size={16} />
+            Upload Logs
+          </Button>
+        </div>
       </div>
 
       {Object.keys(files).length === 0 ? (
@@ -92,7 +100,29 @@ export default function LogVisualizationDashboard() {
               <FileList />
             </div>
             <div className="bg-card rounded-lg border shadow-sm flex-1 overflow-auto">
-              <AdvancedFilterPanel />
+              <Tabs value={activeSidebarTab} onValueChange={setActiveSidebarTab}>
+                <TabsList className="w-full">
+                  <TabsTrigger value="filters" className="flex-1">
+                    Filters
+                  </TabsTrigger>
+                  <TabsTrigger value="removal" className="flex-1 relative">
+                    Remove
+                    {removedCount > 0 && (
+                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
+                        {removedCount > 99 ? "99+" : removedCount}
+                      </span>
+                    )}
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="filters" className="mt-0">
+                  <AdvancedFilterPanel />
+                </TabsContent>
+
+                <TabsContent value="removal" className="mt-0">
+                  <LogRemovalPanel />
+                </TabsContent>
+              </Tabs>
             </div>
           </div>
           <div className="lg:col-span-3 flex flex-col gap-4">

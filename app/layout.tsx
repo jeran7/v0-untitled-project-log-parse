@@ -1,6 +1,7 @@
 import type React from "react"
 import { Providers } from "@/lib/providers"
 import "./globals.css"
+import "./fullscreen.css"
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 
