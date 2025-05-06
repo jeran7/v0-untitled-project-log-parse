@@ -3,16 +3,19 @@
 import type React from "react"
 
 import { useState, useRef } from "react"
-import { useDispatch } from "react-redux"
+import { useDispatch, useSelector } from "react-redux"
 import { processFile } from "@/lib/thunks/fileThunks"
 import { setFileUploadModalOpen } from "@/lib/slices/uiSlice"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Upload, X, FileText, AlertCircle } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import type { RootState } from "@/lib/store"
+import { formatFileSize } from "@/lib/utils/stringUtils"
 
 export default function FileUploader() {
   const dispatch = useDispatch()
+  const isOpen = useSelector((state: RootState) => state.ui.fileUploadModalOpen)
   const [files, setFiles] = useState<File[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -85,20 +88,20 @@ export default function FileUploader() {
 
     // Close the modal
     dispatch(setFileUploadModalOpen(false))
+
+    // Reset the files state
+    setFiles([])
   }
 
   const handleClose = () => {
     dispatch(setFileUploadModalOpen(false))
-  }
 
-  const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return bytes + " B"
-    else if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + " KB"
-    else return (bytes / (1024 * 1024)).toFixed(2) + " MB"
+    // Reset the files state when closing
+    setFiles([])
   }
 
   return (
-    <Dialog open={true} onOpenChange={handleClose}>
+    <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Upload Log Files</DialogTitle>

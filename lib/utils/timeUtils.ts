@@ -2,7 +2,13 @@
  * Normalize a timestamp string to a UTC Date object
  * @param timestamp Timestamp string in various formats
  */
-export function normalizeTimestamp(timestamp: string): string {
+export function normalizeTimestamp(timestamp: string | undefined | null): string {
+  // Return current time if timestamp is undefined or null
+  if (timestamp === undefined || timestamp === null) {
+    console.warn("Received undefined or null timestamp, using current time")
+    return new Date().toISOString()
+  }
+
   try {
     // Handle common timestamp formats
     let date: Date
@@ -53,12 +59,24 @@ export function normalizeTimestamp(timestamp: string): string {
  * @param format Display format (default: 'full')
  */
 export function formatTimestamp(
-  timestamp: string,
+  timestamp: string | undefined | null,
   timeZone = "UTC",
   format: "full" | "date" | "time" | "datetime" = "full",
 ): string {
+  // Return empty string if timestamp is undefined or null
+  if (timestamp === undefined || timestamp === null) {
+    console.warn("Received undefined or null timestamp in formatTimestamp")
+    return ""
+  }
+
   try {
     const date = new Date(timestamp)
+
+    // Check if date is valid before formatting
+    if (isNaN(date.getTime())) {
+      console.warn(`Invalid timestamp for formatting: ${timestamp}`)
+      return timestamp.toString()
+    }
 
     // Options for different formats
     let options: Intl.DateTimeFormatOptions
@@ -109,7 +127,7 @@ export function formatTimestamp(
     return new Intl.DateTimeFormat("en-US", options).format(date)
   } catch (error) {
     console.error(`Error formatting timestamp: ${timestamp}`, error)
-    return timestamp
+    return String(timestamp)
   }
 }
 
@@ -125,8 +143,19 @@ export function calculateTimeRange(timestamps: string[]): { start: string; end: 
     }
   }
 
-  // Convert all timestamps to Date objects
-  const dates = timestamps.map((ts) => new Date(ts))
+  // Convert all timestamps to Date objects, filtering out invalid dates
+  const dates = timestamps
+    .map((ts) => (ts ? new Date(ts) : null))
+    .filter((date): date is Date => date !== null && !isNaN(date.getTime()))
+
+  // If no valid dates, return current time
+  if (dates.length === 0) {
+    const now = new Date()
+    return {
+      start: now.toISOString(),
+      end: now.toISOString(),
+    }
+  }
 
   // Find min and max dates
   const start = new Date(Math.min(...dates.map((d) => d.getTime())))

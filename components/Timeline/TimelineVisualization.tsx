@@ -442,6 +442,14 @@ export default function TimelineVisualization() {
     )
   }
 
+  // Example for a formatTime function used in this component:
+  const formatTime = (date?: Date | null) => {
+    if (!date || isNaN(date.getTime())) {
+      return "" // Return empty string for invalid dates
+    }
+    return formatTimestamp(date.toISOString(), timeZone, "datetime")
+  }
+
   return (
     <div className="flex flex-col w-full">
       {/* Top control panel */}

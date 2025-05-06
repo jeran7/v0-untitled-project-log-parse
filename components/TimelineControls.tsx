@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useDispatch, useSelector } from "react-redux"
 import type { RootState } from "@/lib/store"
 import { setTimeRange } from "@/lib/slices/logsSlice"
@@ -13,6 +13,7 @@ import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RefreshCw } from "lucide-re
 
 export default function TimelineControls() {
   const dispatch = useDispatch()
+  const hasInitialized = useRef(false)
 
   // Get data from Redux store
   const logEntries = useSelector((state: RootState) => state.logs.entries)
@@ -35,6 +36,7 @@ export default function TimelineControls() {
       const timestamps = Object.values(logEntries)
         .filter((log) => selectedFileIds.includes(log.fileId))
         .map((log) => log.timestamp)
+        .filter((timestamp): timestamp is Date => timestamp instanceof Date)
 
       if (timestamps.length > 0) {
         const startTime = new Date(Math.min(...timestamps.map((d) => d.getTime())))
@@ -43,13 +45,14 @@ export default function TimelineControls() {
         setGlobalStartTime(startTime)
         setGlobalEndTime(endTime)
 
-        // Set initial time range if not already set
-        if (!timeRange) {
+        // Set initial time range if not already set and only once
+        if (!timeRange && !hasInitialized.current) {
+          hasInitialized.current = true
           dispatch(setTimeRange({ start: startTime, end: endTime }))
         }
       }
     }
-  }, [logEntries, selectedFileIds, timeRange, dispatch])
+  }, [logEntries, selectedFileIds, dispatch])
 
   // Handle zoom level change
   const handleZoomChange = (newZoomLevel: number[]) => {
