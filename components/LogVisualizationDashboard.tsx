@@ -12,8 +12,8 @@ import FileList from "@/components/FileList"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Upload, SplitSquareVertical, Layers } from "lucide-react"
-import TimelineNavigator from "@/components/Timeline/TimelineNavigator"
-import FilterPanel from "@/components/Filters/FilterPanel"
+import TimelineVisualization from "@/components/Timeline/TimelineVisualization"
+import AdvancedFilterPanel from "@/components/Filters/AdvancedFilterPanel"
 
 export default function LogVisualizationDashboard() {
   const dispatch = useDispatch()
@@ -92,12 +92,12 @@ export default function LogVisualizationDashboard() {
               <FileList />
             </div>
             <div className="bg-card rounded-lg border shadow-sm flex-1 overflow-auto">
-              <FilterPanel />
+              <AdvancedFilterPanel />
             </div>
           </div>
           <div className="lg:col-span-3 flex flex-col gap-4">
             <div className="bg-card rounded-lg border shadow-sm p-4">
-              <TimelineNavigator onTimeRangeChanged={handleTimeRangeChanged} onJumpToTime={handleJumpToTime} />
+              <TimelineVisualization />
             </div>
             <div className="flex-1 bg-card rounded-lg border shadow-sm p-4 overflow-hidden">
               <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full">

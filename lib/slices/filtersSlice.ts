@@ -14,6 +14,9 @@ interface FiltersState {
   // Meta information about available filter options
   availableLogLevels: string[]
   availableSources: string[]
+  // Undo/redo history
+  past: Filter[][]
+  future: Filter[][]
 }
 
 const initialState: FiltersState = {
@@ -23,6 +26,8 @@ const initialState: FiltersState = {
   lastFilterUpdate: 0,
   availableLogLevels: [],
   availableSources: [],
+  past: [],
+  future: [],
 }
 
 const filtersSlice = createSlice({
@@ -31,6 +36,10 @@ const filtersSlice = createSlice({
   reducers: {
     // Add a new filter
     addFilter: (state, action: PayloadAction<Omit<Filter, "id">>) => {
+      // Save current state to past for undo
+      state.past.push([...state.filters])
+      state.future = []
+
       const filter = { ...action.payload, id: uuidv4() }
       state.filters.push(filter as Filter)
       state.lastFilterUpdate = Date.now()
@@ -40,6 +49,10 @@ const filtersSlice = createSlice({
     updateFilter: (state, action: PayloadAction<Filter>) => {
       const index = state.filters.findIndex((f) => f.id === action.payload.id)
       if (index !== -1) {
+        // Save current state to past for undo
+        state.past.push([...state.filters])
+        state.future = []
+
         state.filters[index] = action.payload
         state.lastFilterUpdate = Date.now()
       }
@@ -47,12 +60,20 @@ const filtersSlice = createSlice({
 
     // Remove a filter
     removeFilter: (state, action: PayloadAction<string>) => {
+      // Save current state to past for undo
+      state.past.push([...state.filters])
+      state.future = []
+
       state.filters = state.filters.filter((f) => f.id !== action.payload)
       state.lastFilterUpdate = Date.now()
     },
 
     // Set all filters
     setFilters: (state, action: PayloadAction<Filter[]>) => {
+      // Save current state to past for undo
+      state.past.push([...state.filters])
+      state.future = []
+
       state.filters = action.payload
       state.lastFilterUpdate = Date.now()
     },
@@ -61,6 +82,10 @@ const filtersSlice = createSlice({
     toggleFilterEnabled: (state, action: PayloadAction<string>) => {
       const filter = state.filters.find((f) => f.id === action.payload)
       if (filter) {
+        // Save current state to past for undo
+        state.past.push([...state.filters])
+        state.future = []
+
         filter.enabled = !filter.enabled
         state.lastFilterUpdate = Date.now()
       }
@@ -98,6 +123,10 @@ const filtersSlice = createSlice({
     applyFilterPreset: (state, action: PayloadAction<string>) => {
       const preset = state.presets.find((p) => p.id === action.payload)
       if (preset) {
+        // Save current state to past for undo
+        state.past.push([...state.filters])
+        state.future = []
+
         state.filters = [...preset.filters]
         preset.lastUsed = new Date()
         state.lastFilterUpdate = Date.now()
@@ -111,9 +140,43 @@ const filtersSlice = createSlice({
 
     // Reset all filters
     resetFilters: (state) => {
+      // Save current state to past for undo
+      state.past.push([...state.filters])
+      state.future = []
+
       state.filters = []
       state.isFiltering = false
       state.lastFilterUpdate = Date.now()
+    },
+
+    // Undo last filter change
+    undoFilterChange: (state) => {
+      if (state.past.length === 0) return
+
+      // Save current state to future for redo
+      state.future.push([...state.filters])
+
+      // Get the last state from past
+      const previousFilters = state.past.pop()
+      if (previousFilters) {
+        state.filters = previousFilters
+        state.lastFilterUpdate = Date.now()
+      }
+    },
+
+    // Redo last undone filter change
+    redoFilterChange: (state) => {
+      if (state.future.length === 0) return
+
+      // Save current state to past for undo
+      state.past.push([...state.filters])
+
+      // Get the next state from future
+      const nextFilters = state.future.pop()
+      if (nextFilters) {
+        state.filters = nextFilters
+        state.lastFilterUpdate = Date.now()
+      }
     },
   },
 })
@@ -131,6 +194,8 @@ export const {
   applyFilterPreset,
   setIsFiltering,
   resetFilters,
+  undoFilterChange,
+  redoFilterChange,
 } = filtersSlice.actions
 
 export default filtersSlice.reducer

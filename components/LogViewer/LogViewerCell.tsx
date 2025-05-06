@@ -1,9 +1,12 @@
 import { memo } from "react"
 import type { LogViewerCellProps } from "./types"
+import { useSelector } from "react-redux"
+import type { RootState } from "@/lib/store"
+import { highlightText } from "./highlightText"
 
 /**
  * Cell component for the LogViewer
- * Renders a single cell with formatted content
+ * Renders a single cell with formatted content and text highlighting
  *
  * Performance optimized with React.memo to prevent unnecessary re-renders
  */
@@ -11,6 +14,12 @@ export const LogViewerCell = memo(
   function LogViewerCell({ column, log, timeZone }: LogViewerCellProps) {
     // Get the value from the log entry
     const value = typeof column.field === "string" ? log[column.field as keyof typeof log] : null
+
+    // Get active filters for highlighting
+    const filters = useSelector((state: RootState) => state.filters.filters)
+    const activeTextFilters = filters.filter(
+      (f) => f.enabled && (f.type === "text" || f.type === "regex") && f.fields?.includes(column.field as string),
+    )
 
     // Format the value using the column formatter if available
     const formattedValue = column.formatter ? column.formatter(value, log, timeZone) : value || "-"
@@ -51,6 +60,21 @@ export const LogViewerCell = memo(
       )
     }
 
+    // If there are no active text filters or the value is not a string, render normally
+    if (activeTextFilters.length === 0 || typeof formattedValue !== "string") {
+      return (
+        <div
+          className={`px-2 py-1 truncate ${column.className || ""}`}
+          style={{ width: column.width }}
+          title={typeof value === "string" ? value : undefined}
+          role="cell"
+        >
+          {formattedValue}
+        </div>
+      )
+    }
+
+    // Highlight matched text
     return (
       <div
         className={`px-2 py-1 truncate ${column.className || ""}`}
@@ -58,7 +82,7 @@ export const LogViewerCell = memo(
         title={typeof value === "string" ? value : undefined}
         role="cell"
       >
-        {formattedValue}
+        {highlightText(formattedValue, activeTextFilters)}
       </div>
     )
   },

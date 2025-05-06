@@ -3,7 +3,7 @@
 import type React from "react"
 import { memo } from "react"
 import type { LogViewerRowProps } from "./types"
-import { LogViewerCell } from "./LogViewerCell"
+import { EnhancedLogViewerCell } from "./EnhancedLogViewerCell"
 
 /**
  * Row component for the LogViewer
@@ -32,7 +32,7 @@ export const LogViewerRow = memo(
         {columns
           .filter((column) => column.visible !== false)
           .map((column) => (
-            <LogViewerCell key={column.id} column={column} log={log} timeZone={timeZone} />
+            <EnhancedLogViewerCell key={column.id} column={column} log={log} timeZone={timeZone} />
           ))}
       </div>
     )
