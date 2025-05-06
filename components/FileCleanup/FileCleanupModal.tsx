@@ -2,326 +2,333 @@
 
 import { useState, useEffect } from "react"
 import { useDispatch, useSelector } from "react-redux"
-import type { RootState } from "@/lib/store"
-import { setFileCleanupModalOpen } from "@/lib/slices/uiSlice"
+import { setCleanupModalOpen } from "@/lib/slices/uiSlice"
 import { processFile } from "@/lib/thunks/fileThunks"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Switch } from "@/components/ui/switch"
 import { Progress } from "@/components/ui/progress"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { FileText, AlertTriangle } from "lucide-react"
-import { formatFileSize } from "@/lib/utils/stringUtils"
+import { FileText } from "lucide-react"
+import type { RootState } from "@/lib/store"
+import type { AppDispatch } from "@/lib/store"
 
-export default function FileCleanupModal() {
-  const dispatch = useDispatch()
+interface FileCleanupModalProps {
+  files: File[]
+}
+
+export default function FileCleanupModal({ files }: FileCleanupModalProps) {
+  const dispatch = useDispatch<AppDispatch>()
   const isOpen = useSelector((state: RootState) => state.ui.fileCleanupModalOpen)
-  const pendingFiles = useSelector((state: RootState) => state.files.pendingFiles)
-  const currentFile = pendingFiles[0] || null
-
-  const [cleanupMethod, setCleanupMethod] = useState("text")
   const [textPattern, setTextPattern] = useState("")
-  const [caseSensitive, setCaseSensitive] = useState(false)
   const [regexPattern, setRegexPattern] = useState("")
-  const [regexFlags, setRegexFlags] = useState("g")
-  const [fileContent, setFileContent] = useState<string[]>([])
-  const [previewContent, setPreviewContent] = useState<string[]>([])
-  const [removedLineCount, setRemovedLineCount] = useState(0)
-  const [regexError, setRegexError] = useState("")
-  const [isProcessing, setIsProcessing] = useState(false)
+  const [isRegexValid, setIsRegexValid] = useState(true)
+  const [useRegex, setUseRegex] = useState(false)
+  const [caseSensitive, setCaseSensitive] = useState(false)
+  const [previewLines, setPreviewLines] = useState<string[]>([])
+  const [isLoading, setIsLoading] = useState(false)
   const [progress, setProgress] = useState(0)
+  const [processedFiles, setProcessedFiles] = useState<string[]>([])
+  const [currentFile, setCurrentFile] = useState<string | null>(null)
 
-  // Load file content for preview
+  // Reset state when files change
   useEffect(() => {
-    if (currentFile && currentFile.content) {
-      const lines = currentFile.content.split("\n").slice(0, 100) // Preview first 100 lines
-      setFileContent(lines)
-      setPreviewContent(lines)
+    if (files.length > 0) {
+      setTextPattern("")
+      setRegexPattern("")
+      setUseRegex(false)
+      setCaseSensitive(false)
+      setPreviewLines([])
+      setIsLoading(false)
+      setProgress(0)
+      setProcessedFiles([])
+      setCurrentFile(null)
+    }
+  }, [files])
+
+  // Validate regex when it changes
+  useEffect(() => {
+    if (useRegex && regexPattern) {
+      try {
+        new RegExp(regexPattern, caseSensitive ? "" : "i")
+        setIsRegexValid(true)
+      } catch (e) {
+        setIsRegexValid(false)
+      }
     } else {
-      setFileContent([])
-      setPreviewContent([])
+      setIsRegexValid(true)
     }
-  }, [currentFile])
+  }, [regexPattern, useRegex, caseSensitive])
 
-  // Apply cleanup pattern to preview
+  // Generate preview when pattern changes
   useEffect(() => {
-    if (fileContent.length === 0) return
+    if (!isOpen || files.length === 0) return
 
-    try {
-      let filteredLines: string[]
-      let removedCount = 0
+    const generatePreview = async () => {
+      if ((!textPattern && !useRegex) || (useRegex && !regexPattern)) {
+        setPreviewLines([])
+        return
+      }
 
-      if (cleanupMethod === "text") {
-        const pattern = textPattern.trim()
-        if (!pattern) {
-          setPreviewContent(fileContent)
-          setRemovedLineCount(0)
-          return
-        }
+      setIsLoading(true)
+      const previewFile = files[0]
+      const maxPreviewLines = 100
+      const previewText = await readFileChunk(previewFile, 0, 100 * 1024) // Read first 100KB for preview
 
-        filteredLines = fileContent.filter((line) => {
-          const matches = caseSensitive ? line.includes(pattern) : line.toLowerCase().includes(pattern.toLowerCase())
-
-          if (matches) removedCount++
-          return !matches
-        })
-      } else {
-        // Regex method
-        if (!regexPattern.trim()) {
-          setPreviewContent(fileContent)
-          setRemovedLineCount(0)
-          return
-        }
-
+      let pattern: RegExp
+      if (useRegex) {
         try {
-          const regex = new RegExp(regexPattern, regexFlags)
-          setRegexError("")
-
-          filteredLines = fileContent.filter((line) => {
-            const matches = regex.test(line)
-            if (matches) removedCount++
-            return !matches
-          })
-        } catch (error) {
-          setRegexError((error as Error).message)
-          filteredLines = fileContent
-          removedCount = 0
-        }
-      }
-
-      setPreviewContent(filteredLines)
-      setRemovedLineCount(removedCount)
-    } catch (error) {
-      console.error("Error applying cleanup pattern:", error)
-      setPreviewContent(fileContent)
-      setRemovedLineCount(0)
-    }
-  }, [fileContent, cleanupMethod, textPattern, caseSensitive, regexPattern, regexFlags])
-
-  // Handle closing the modal
-  const handleClose = () => {
-    if (isProcessing) return
-    dispatch(setFileCleanupModalOpen(false))
-  }
-
-  // Handle skipping cleanup
-  const handleSkipCleanup = () => {
-    if (isProcessing || !currentFile) return
-
-    setIsProcessing(true)
-    setProgress(0)
-
-    // Process file without cleanup
-    dispatch(
-      processFile({
-        file: currentFile,
-        onProgress: (progress) => setProgress(progress),
-      }),
-    )
-      .then(() => {
-        setIsProcessing(false)
-        dispatch(setFileCleanupModalOpen(false))
-      })
-      .catch(() => {
-        setIsProcessing(false)
-      })
-  }
-
-  // Handle applying cleanup
-  const handleApplyCleanup = () => {
-    if (isProcessing || !currentFile) return
-
-    setIsProcessing(true)
-    setProgress(0)
-
-    try {
-      let cleanedContent: string
-
-      if (cleanupMethod === "text") {
-        const pattern = textPattern.trim()
-        if (!pattern) {
-          cleanedContent = currentFile.content
-        } else {
-          const lines = currentFile.content.split("\n")
-          const filteredLines = lines.filter((line) => {
-            return caseSensitive ? !line.includes(pattern) : !line.toLowerCase().includes(pattern.toLowerCase())
-          })
-          cleanedContent = filteredLines.join("\n")
+          pattern = new RegExp(regexPattern, caseSensitive ? "" : "i")
+        } catch (e) {
+          setIsLoading(false)
+          return
         }
       } else {
-        // Regex method
-        if (!regexPattern.trim() || regexError) {
-          cleanedContent = currentFile.content
-        } else {
-          const regex = new RegExp(regexPattern, regexFlags)
-          const lines = currentFile.content.split("\n")
-          const filteredLines = lines.filter((line) => !regex.test(line))
-          cleanedContent = filteredLines.join("\n")
-        }
+        const escapedPattern = textPattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+        pattern = new RegExp(escapedPattern, caseSensitive ? "" : "i")
       }
 
-      // Process file with cleaned content
-      const cleanedFile = {
-        ...currentFile,
-        content: cleanedContent,
-      }
+      const lines = previewText.split(/\r?\n/)
+      const matchedLines = lines.filter((line) => pattern.test(line)).slice(0, maxPreviewLines)
 
-      dispatch(
-        processFile({
-          file: cleanedFile,
-          onProgress: (progress) => setProgress(progress),
-        }),
-      )
-        .then(() => {
-          setIsProcessing(false)
-          dispatch(setFileCleanupModalOpen(false))
-        })
-        .catch(() => {
-          setIsProcessing(false)
-        })
-    } catch (error) {
-      console.error("Error applying cleanup:", error)
-      setIsProcessing(false)
+      setPreviewLines(matchedLines)
+      setIsLoading(false)
     }
+
+    const debounce = setTimeout(generatePreview, 300)
+    return () => clearTimeout(debounce)
+  }, [isOpen, files, textPattern, regexPattern, useRegex, caseSensitive])
+
+  const readFileChunk = (file: File, start: number, length: number): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = reject
+      reader.readAsText(file.slice(start, start + length))
+    })
   }
 
-  // Toggle regex flags
-  const toggleRegexFlag = (flag: string) => {
-    setRegexFlags((prev) => (prev.includes(flag) ? prev.replace(flag, "") : prev + flag))
+  const handleClose = () => {
+    dispatch(setCleanupModalOpen(false))
   }
 
-  if (!currentFile) return null
+  const handleCleanAndProcess = async () => {
+    if (files.length === 0) return
+
+    setIsLoading(true)
+    setProgress(0)
+    setProcessedFiles([])
+
+    let pattern: RegExp | null = null
+    if (useRegex && regexPattern) {
+      try {
+        pattern = new RegExp(regexPattern, caseSensitive ? "" : "i")
+      } catch (e) {
+        setIsLoading(false)
+        return
+      }
+    } else if (textPattern) {
+      const escapedPattern = textPattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+      pattern = new RegExp(escapedPattern, caseSensitive ? "" : "i")
+    }
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+      setCurrentFile(file.name)
+
+      if (pattern) {
+        // Clean the file by removing lines that match the pattern
+        const cleanedFile = await cleanFile(file, pattern)
+        // Process the cleaned file
+        await dispatch(processFile(cleanedFile))
+      } else {
+        // Process the original file if no pattern is specified
+        await dispatch(processFile(file))
+      }
+
+      setProcessedFiles((prev) => [...prev, file.name])
+      setProgress(((i + 1) / files.length) * 100)
+    }
+
+    setIsLoading(false)
+    setCurrentFile(null)
+    handleClose()
+  }
+
+  const cleanFile = async (file: File, pattern: RegExp): Promise<File> => {
+    const text = await readFileChunk(file, 0, file.size)
+    const lines = text.split(/\r?\n/)
+    const cleanedLines = lines.filter((line) => !pattern.test(line))
+    const cleanedText = cleanedLines.join("\n")
+
+    return new File([cleanedText], file.name, { type: file.type })
+  }
+
+  const handleSkip = async () => {
+    if (files.length === 0) return
+
+    setIsLoading(true)
+    setProgress(0)
+    setProcessedFiles([])
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+      setCurrentFile(file.name)
+      await dispatch(processFile(file))
+      setProcessedFiles((prev) => [...prev, file.name])
+      setProgress(((i + 1) / files.length) * 100)
+    }
+
+    setIsLoading(false)
+    setCurrentFile(null)
+    handleClose()
+  }
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+    <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Clean Up Log File</DialogTitle>
+          <DialogTitle>Clean Up Log Files</DialogTitle>
         </DialogHeader>
 
-        <div className="flex items-center gap-2 text-sm">
-          <FileText className="h-4 w-4 text-muted-foreground" />
-          <span className="font-medium">{currentFile.name}</span>
-          <span className="text-muted-foreground">({formatFileSize(currentFile.size)})</span>
-        </div>
-
-        {isProcessing ? (
-          <div className="py-8 space-y-4">
-            <div className="text-center">Processing file...</div>
-            <Progress value={progress} className="h-2" />
-            <div className="text-center text-sm text-muted-foreground">{progress}% complete</div>
+        {files.length === 0 ? (
+          <div className="text-center py-4">
+            <p>No files selected for cleanup.</p>
           </div>
         ) : (
           <>
-            <Tabs defaultValue="text" value={cleanupMethod} onValueChange={setCleanupMethod}>
-              <TabsList className="grid grid-cols-2">
+            <Tabs defaultValue="text" className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="text">Text Pattern</TabsTrigger>
-                <TabsTrigger value="regex">Regex Pattern</TabsTrigger>
+                <TabsTrigger value="regex">Regular Expression</TabsTrigger>
               </TabsList>
-
-              <TabsContent value="text" className="space-y-4">
+              <TabsContent value="text" className="space-y-4 mt-4">
                 <div className="space-y-2">
-                  <Label htmlFor="textPattern">Remove lines containing text:</Label>
+                  <Label htmlFor="text-pattern">Enter text to remove lines containing:</Label>
                   <Input
-                    id="textPattern"
-                    placeholder="Enter text to match"
+                    id="text-pattern"
+                    placeholder="e.g., DEBUG, error, warning"
                     value={textPattern}
                     onChange={(e) => setTextPattern(e.target.value)}
+                    disabled={isLoading}
                   />
-
-                  <div className="flex items-center space-x-2">
-                    <Switch id="caseSensitive" checked={caseSensitive} onCheckedChange={setCaseSensitive} />
-                    <Label htmlFor="caseSensitive">Case sensitive</Label>
-                  </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="case-sensitive-text"
+                    checked={caseSensitive}
+                    onCheckedChange={(checked) => setCaseSensitive(checked === true)}
+                    disabled={isLoading}
+                  />
+                  <Label htmlFor="case-sensitive-text">Case sensitive</Label>
                 </div>
               </TabsContent>
-
-              <TabsContent value="regex" className="space-y-4">
+              <TabsContent value="regex" className="space-y-4 mt-4">
                 <div className="space-y-2">
-                  <Label htmlFor="regexPattern">Remove lines matching regex:</Label>
+                  <Label htmlFor="regex-pattern">Enter regular expression to remove matching lines:</Label>
                   <Input
-                    id="regexPattern"
-                    placeholder="Enter regular expression"
+                    id="regex-pattern"
+                    placeholder="e.g., ^\d{4}-\d{2}-\d{2}.*DEBUG"
                     value={regexPattern}
-                    onChange={(e) => setRegexPattern(e.target.value)}
-                    className={regexError ? "border-red-500" : ""}
+                    onChange={(e) => {
+                      setRegexPattern(e.target.value)
+                      setUseRegex(true)
+                    }}
+                    className={!isRegexValid ? "border-red-500" : ""}
+                    disabled={isLoading}
                   />
-
-                  {regexError && (
-                    <div className="text-sm text-red-500 flex items-center gap-1">
-                      <AlertTriangle className="h-3 w-3" />
-                      {regexError}
-                    </div>
-                  )}
-
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center space-x-2">
-                      <Switch
-                        id="flagI"
-                        checked={regexFlags.includes("i")}
-                        onCheckedChange={() => toggleRegexFlag("i")}
-                      />
-                      <Label htmlFor="flagI">Case insensitive (i)</Label>
-                    </div>
-
-                    <div className="flex items-center space-x-2">
-                      <Switch
-                        id="flagM"
-                        checked={regexFlags.includes("m")}
-                        onCheckedChange={() => toggleRegexFlag("m")}
-                      />
-                      <Label htmlFor="flagM">Multiline (m)</Label>
-                    </div>
-
-                    <div className="flex items-center space-x-2">
-                      <Switch
-                        id="flagG"
-                        checked={regexFlags.includes("g")}
-                        onCheckedChange={() => toggleRegexFlag("g")}
-                      />
-                      <Label htmlFor="flagG">Global (g)</Label>
-                    </div>
-                  </div>
+                  {!isRegexValid && <p className="text-red-500 text-sm">Invalid regular expression</p>}
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="case-sensitive-regex"
+                    checked={caseSensitive}
+                    onCheckedChange={(checked) => setCaseSensitive(checked === true)}
+                    disabled={isLoading}
+                  />
+                  <Label htmlFor="case-sensitive-regex">Case sensitive</Label>
                 </div>
               </TabsContent>
             </Tabs>
 
-            <div className="border rounded-md">
-              <div className="p-2 border-b bg-muted/50 flex justify-between items-center">
-                <span className="text-sm font-medium">Preview (first 100 lines)</span>
-                <span className="text-sm text-muted-foreground">
-                  {removedLineCount > 0 ? `${removedLineCount} lines will be removed` : "No lines will be removed"}
-                </span>
-              </div>
-
-              <ScrollArea className="h-[300px]">
-                <div className="p-2 font-mono text-xs whitespace-pre">
-                  {previewContent.length > 0 ? (
-                    previewContent.map((line, index) => (
-                      <div key={index} className="py-0.5">
-                        {line || " "}
+            {isLoading && (
+              <div className="space-y-2 mt-4">
+                <div className="flex justify-between">
+                  <span className="text-sm">Processing files...</span>
+                  <span className="text-sm">{Math.round(progress)}%</span>
+                </div>
+                <Progress value={progress} className="h-2" />
+                {currentFile && <p className="text-sm text-muted-foreground">Current file: {currentFile}</p>}
+                {processedFiles.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-sm font-medium">Processed files:</p>
+                    <ScrollArea className="h-20 mt-1">
+                      <div className="space-y-1">
+                        {processedFiles.map((file, index) => (
+                          <div key={index} className="flex items-center text-sm">
+                            <FileText className="h-3 w-3 mr-2" />
+                            <span>{file}</span>
+                          </div>
+                        ))}
                       </div>
-                    ))
+                    </ScrollArea>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!isLoading && (previewLines.length > 0 || (useRegex && regexPattern) || textPattern) && (
+              <div className="mt-4">
+                <Label>Preview of lines that will be removed:</Label>
+                <ScrollArea className="h-40 mt-2 border rounded-md p-2">
+                  {previewLines.length > 0 ? (
+                    <div className="space-y-1">
+                      {previewLines.map((line, index) => (
+                        <div key={index} className="text-sm font-mono break-all">
+                          {line}
+                        </div>
+                      ))}
+                      {previewLines.length === 100 && (
+                        <div className="text-sm text-muted-foreground italic">Showing first 100 matches only</div>
+                      )}
+                    </div>
                   ) : (
-                    <div className="p-4 text-center text-muted-foreground">No content to preview</div>
+                    <div className="text-sm text-muted-foreground italic">No matching lines found in the preview</div>
                   )}
+                </ScrollArea>
+              </div>
+            )}
+
+            <div className="mt-4">
+              <Label>Selected Files:</Label>
+              <ScrollArea className="h-20 mt-2 border rounded-md p-2">
+                <div className="space-y-1">
+                  {files.map((file, index) => (
+                    <div key={index} className="flex items-center text-sm">
+                      <FileText className="h-3 w-3 mr-2" />
+                      <span>{file.name}</span>
+                    </div>
+                  ))}
                 </div>
               </ScrollArea>
             </div>
+
+            <DialogFooter className="mt-4">
+              <Button variant="outline" onClick={handleSkip} disabled={isLoading}>
+                Skip Cleanup
+              </Button>
+              <Button
+                onClick={handleCleanAndProcess}
+                disabled={isLoading || (useRegex && (!regexPattern || !isRegexValid)) || (!useRegex && !textPattern)}
+              >
+                Clean & Process
+              </Button>
+            </DialogFooter>
           </>
         )}
-
-        <DialogFooter>
-          <Button variant="outline" onClick={handleSkipCleanup} disabled={isProcessing}>
-            Skip Cleanup
-          </Button>
-          <Button onClick={handleApplyCleanup} disabled={isProcessing}>
-            Apply Cleanup
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

@@ -4,201 +4,171 @@ import type React from "react"
 
 import { useState, useRef } from "react"
 import { useDispatch, useSelector } from "react-redux"
-import { Upload, X, AlertTriangle, FileText } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Progress } from "@/components/ui/progress"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { uploadFiles } from "@/lib/thunks/fileThunks"
 import { setUploadModalOpen, setCleanupModalOpen } from "@/lib/slices/uiSlice"
-import { runComprehensiveAnalysis } from "@/lib/thunks/analysisThunks"
-import type { AppDispatch, RootState } from "@/lib/store"
+import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Upload, X, FileText, AlertCircle } from "lucide-react"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import type { RootState } from "@/lib/store"
+import { formatFileSize } from "@/lib/utils/stringUtils"
+import FileCleanupModal from "@/components/FileCleanup/FileCleanupModal"
 
 export default function FileUploader() {
-  const dispatch = useDispatch<AppDispatch>()
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const dispatch = useDispatch()
+  const isOpen = useSelector((state: RootState) => state.ui.fileUploadModalOpen)
   const [files, setFiles] = useState<File[]>([])
-  const [progress, setProgress] = useState(0)
+  const [isDragging, setIsDragging] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [isUploading, setIsUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const isModalOpen = useSelector((state: RootState) => state.ui.isUploadModalOpen)
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setFiles(Array.from(e.target.files))
-      setError(null)
-    }
-  }
-
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      setFiles(Array.from(e.dataTransfer.files))
-      setError(null)
-    }
+    setIsDragging(true)
   }
 
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault()
+    setIsDragging(false)
   }
 
-  const handleUpload = async () => {
-    if (files.length === 0) {
-      setError("Please select at least one file to upload")
-      return
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+
+    const droppedFiles = Array.from(e.dataTransfer.files)
+    validateAndAddFiles(droppedFiles)
+  }
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const selectedFiles = Array.from(e.target.files)
+      validateAndAddFiles(selectedFiles)
     }
+  }
 
-    setIsUploading(true)
-    setProgress(0)
+  const validateAndAddFiles = (newFiles: File[]) => {
+    setError(null)
 
-    try {
-      await dispatch(
-        uploadFiles({
-          files,
-          onProgress: (percent) => {
-            setProgress(percent)
-          },
-        }),
-      )
+    // Validate file types
+    const validFiles = newFiles.filter((file) => {
+      const isValid = file.name.endsWith(".csv") || file.name.endsWith(".log") || file.name.endsWith(".txt")
 
-      // Close upload modal and open cleanup modal
-      dispatch(setUploadModalOpen(false))
-      dispatch(setCleanupModalOpen(true))
-
-      // Reset state
-      setFiles([])
-      setProgress(0)
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ""
+      if (!isValid) {
+        setError("Only CSV, LOG, and TXT files are supported.")
       }
 
-      // Run analysis after upload
-      setTimeout(() => {
-        dispatch(runComprehensiveAnalysis())
-      }, 1000)
-    } catch (err) {
-      setError(`Upload failed: ${(err as Error).message}`)
-    } finally {
-      setIsUploading(false)
-    }
+      return isValid
+    })
+
+    // Validate file sizes
+    const validSizedFiles = validFiles.filter((file) => {
+      const isValidSize = file.size <= 300 * 1024 * 1024 // 300MB
+
+      if (!isValidSize) {
+        setError("Files must be smaller than 300MB.")
+      }
+
+      return isValidSize
+    })
+
+    setFiles((prev) => [...prev, ...validSizedFiles])
   }
 
-  const handleRemoveFile = (index: number) => {
-    setFiles((prevFiles) => prevFiles.filter((_, i) => i !== index))
+  const removeFile = (index: number) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index))
   }
 
-  const handleOpenModal = () => {
-    dispatch(setUploadModalOpen(true))
-  }
-
-  const handleCloseModal = () => {
+  const handleUpload = () => {
+    // Close the upload modal
     dispatch(setUploadModalOpen(false))
-    setFiles([])
-    setError(null)
-    setProgress(0)
-    setIsUploading(false)
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ""
+
+    // Open the cleanup modal if there are files
+    if (files.length > 0) {
+      dispatch(setCleanupModalOpen(true))
     }
+  }
+
+  const handleClose = () => {
+    dispatch(setUploadModalOpen(false))
+
+    // Reset the files state when closing
+    setFiles([])
   }
 
   return (
     <>
-      <Button onClick={handleOpenModal} className="gap-2">
-        <Upload className="h-4 w-4" />
-        Upload Logs
-      </Button>
-
-      <Dialog open={isModalOpen} onOpenChange={(open) => !open && handleCloseModal()}>
+      <Dialog open={isOpen} onOpenChange={handleClose}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Upload Log Files</DialogTitle>
           </DialogHeader>
 
           <div
-            className={`mt-4 border-2 border-dashed rounded-lg p-6 text-center ${
-              error ? "border-red-400" : "border-gray-300"
+            className={`border-2 border-dashed rounded-lg p-6 text-center ${
+              isDragging ? "border-primary bg-primary/10" : "border-muted-foreground/20"
             }`}
-            onDrop={handleDrop}
             onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
           >
+            <Upload className="mx-auto h-12 w-12 text-muted-foreground" />
+            <div className="mt-4">
+              <p className="text-sm font-medium">Drag and drop files here or click to browse</p>
+              <p className="text-xs text-muted-foreground mt-1">Supports CSV, LOG, and TXT files up to 300MB</p>
+            </div>
+            <Button variant="secondary" className="mt-4" onClick={() => fileInputRef.current?.click()}>
+              Browse Files
+            </Button>
             <input
               type="file"
               ref={fileInputRef}
-              onChange={handleFileChange}
               className="hidden"
               multiple
-              accept=".log,.txt,.json,.xml,.csv"
+              accept=".csv,.log,.txt"
+              onChange={handleFileInputChange}
             />
-
-            <div className="flex flex-col items-center justify-center space-y-2">
-              <Upload className="h-8 w-8 text-gray-400" />
-              <p className="text-sm text-gray-500">
-                Drag and drop log files here, or{" "}
-                <button
-                  type="button"
-                  className="text-blue-500 hover:text-blue-700 font-medium"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  browse
-                </button>
-              </p>
-              <p className="text-xs text-gray-400">Supports .log, .txt, .json, .xml, .csv files</p>
-            </div>
           </div>
 
           {error && (
-            <Alert variant="destructive" className="mt-4">
-              <AlertTriangle className="h-4 w-4" />
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
 
           {files.length > 0 && (
             <div className="mt-4">
-              <p className="text-sm font-medium mb-2">Selected Files ({files.length})</p>
+              <p className="text-sm font-medium mb-2">Selected Files:</p>
               <div className="max-h-40 overflow-y-auto space-y-2">
                 {files.map((file, index) => (
                   <div key={index} className="flex items-center justify-between bg-muted p-2 rounded-md">
-                    <div className="flex items-center space-x-2 truncate">
-                      <FileText className="h-4 w-4 text-gray-500" />
-                      <span className="text-sm truncate">{file.name}</span>
+                    <div className="flex items-center">
+                      <FileText className="h-4 w-4 mr-2" />
+                      <div>
+                        <p className="text-sm font-medium truncate max-w-[200px]">{file.name}</p>
+                        <p className="text-xs text-muted-foreground">{formatFileSize(file.size)}</p>
+                      </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveFile(index)}
-                      className="text-gray-500 hover:text-gray-700"
-                      disabled={isUploading}
-                    >
+                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeFile(index)}>
                       <X className="h-4 w-4" />
-                    </button>
+                    </Button>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {isUploading && (
-            <div className="mt-4 space-y-2">
-              <div className="flex justify-between text-sm">
-                <span>Uploading...</span>
-                <span>{progress.toFixed(0)}%</span>
-              </div>
-              <Progress value={progress} className="h-2" />
-            </div>
-          )}
-
-          <div className="flex justify-end space-x-2 mt-4">
-            <Button variant="outline" onClick={handleCloseModal} disabled={isUploading}>
+          <DialogFooter>
+            <Button variant="outline" onClick={handleClose}>
               Cancel
             </Button>
-            <Button onClick={handleUpload} disabled={files.length === 0 || isUploading}>
-              {isUploading ? "Uploading..." : "Upload"}
+            <Button onClick={handleUpload} disabled={files.length === 0}>
+              Upload {files.length > 0 && `(${files.length})`}
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
+      <FileCleanupModal files={files} />
     </>
   )
 }

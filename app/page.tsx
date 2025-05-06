@@ -1,6 +1,6 @@
 "use client"
 import { useDispatch, useSelector } from "react-redux"
-import { setFileUploadModalOpen } from "@/lib/slices/uiSlice"
+import { setUploadModalOpen } from "@/lib/slices/uiSlice"
 import LogViewer from "@/components/LogViewer"
 import TimelineNavigator from "@/components/Timeline/TimelineNavigator"
 import FilterPanel from "@/components/Filters/FilterPanel"
@@ -11,15 +11,15 @@ import { Upload } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { RootState } from "@/lib/store"
 import LogVisualizationDashboard from "@/components/LogVisualizationDashboard"
+import FileUploader from "@/components/FileUploader"
 
 export default function Home() {
   const dispatch = useDispatch()
-  const isFileUploadModalOpen = useSelector((state: RootState) => state.ui.fileUploadModalOpen)
   const files = useSelector((state: RootState) => state.files.files)
   const hasFiles = Object.keys(files).length > 0
 
   const handleOpenUploadModal = () => {
-    dispatch(setFileUploadModalOpen(true))
+    dispatch(setUploadModalOpen(true))
   }
 
   return (
@@ -76,6 +76,7 @@ export default function Home() {
           </div>
         </div>
       )}
+      <FileUploader />
     </main>
   )
 }
