@@ -5,7 +5,6 @@ import type { LogEntry } from "@/types/logs"
 import {
   fileAdded,
   fileProcessingStarted,
-  fileProcessingProgress,
   fileProcessingCompleted,
   fileProcessingError,
   selectFile,
@@ -48,61 +47,47 @@ export const processFile = createAsyncThunk("files/processFile", async (file: Fi
     // Start processing the file
     dispatch(fileProcessingStarted(fileId))
 
-    // Create a web worker for processing the file
-    const worker = new Worker(new URL("@/workers/fileProcessor.ts", import.meta.url), { type: "module" })
+    // Process the file directly instead of using a worker
+    // This is a temporary solution until we can properly set up workers in Next.js
+    try {
+      // Read the file
+      const fileContent = await readFileAsText(file)
 
-    // Handle messages from the worker
-    worker.onmessage = (event) => {
-      const { type, payload } = event.data
+      // Process the file content
+      const processedData = processFileContent(fileContent, fileId)
 
-      switch (type) {
-        case "PROGRESS":
-          dispatch(fileProcessingProgress({ fileId, progress: payload.progress }))
-          break
-        case "COMPLETED":
-          console.log("File processing completed:", payload)
+      // Update file metadata
+      dispatch(
+        fileProcessingCompleted({
+          fileId,
+          metadata: {
+            startTime: new Date(),
+            endTime: new Date(),
+            logCount: processedData.logEntries.length,
+            logLevels: [...new Set(processedData.logEntries.map((entry) => entry.level).filter(Boolean))],
+            sources: [...new Set(processedData.logEntries.map((entry) => entry.source).filter(Boolean))],
+          },
+        }),
+      )
 
-          // Update file metadata
-          dispatch(
-            fileProcessingCompleted({
-              fileId,
-              metadata: payload.processedData.metadata,
-            }),
-          )
+      // Add log entries to the store
+      if (processedData.logEntries && processedData.logEntries.length > 0) {
+        console.log(`Adding ${processedData.logEntries.length} log entries to store`)
 
-          // Add log entries to the store
-          if (payload.logEntries && payload.logEntries.length > 0) {
-            console.log(`Adding ${payload.logEntries.length} log entries to store`)
+        // Convert string timestamps to Date objects
+        const processedEntries = processedData.logEntries.map((entry: any) => ({
+          ...entry,
+          timestamp: new Date(entry.timestamp),
+        })) as LogEntry[]
 
-            // Convert string timestamps to Date objects
-            const processedEntries = payload.logEntries.map((entry: any) => ({
-              ...entry,
-              timestamp: new Date(entry.timestamp),
-            })) as LogEntry[]
-
-            dispatch(addLogEntries({ entries: processedEntries, fileId }))
-          } else {
-            console.warn("No log entries returned from worker")
-          }
-          break
-        case "ERROR":
-          console.error("Error processing file:", payload.error)
-          dispatch(fileProcessingError({ fileId, error: payload.error }))
-          break
+        dispatch(addLogEntries({ entries: processedEntries, fileId }))
+      } else {
+        console.warn("No log entries found in file")
       }
+    } catch (error) {
+      console.error("Error processing file:", error)
+      dispatch(fileProcessingError({ fileId, error: error.message || "Unknown error processing file" }))
     }
-
-    // Handle worker errors
-    worker.onerror = (error) => {
-      console.error("Worker error:", error)
-      dispatch(fileProcessingError({ fileId, error: error.message || "Unknown worker error" }))
-    }
-
-    // Send the file to the worker for processing
-    worker.postMessage({
-      type: "PROCESS_FILE",
-      payload: { file, fileId },
-    })
 
     return fileMetadata
   } catch (error) {
@@ -110,3 +95,132 @@ export const processFile = createAsyncThunk("files/processFile", async (file: Fi
     throw error
   }
 })
+
+/**
+ * Read a file as text
+ * @param file The file to read
+ * @returns Promise that resolves to the file content as text
+ */
+async function readFileAsText(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = () => reject(new Error("Failed to read file"))
+    reader.readAsText(file)
+  })
+}
+
+/**
+ * Process file content
+ * @param content The file content as text
+ * @param fileId The ID of the file
+ * @returns Processed data including log entries
+ */
+function processFileContent(content: string, fileId: string) {
+  // Split content into lines
+  const lines = content.split(/\r?\n/).filter((line) => line.trim())
+
+  // Process each line into a log entry
+  const logEntries = lines.map((line, index) => {
+    // Extract timestamp, level, source, and message from the line
+    const parsedLog = parseLogLine(line)
+
+    return {
+      id: uuidv4(),
+      fileId,
+      lineNumber: index + 1,
+      timestamp: parsedLog.timestamp,
+      level: parsedLog.level,
+      source: parsedLog.source,
+      message: parsedLog.message,
+      raw: line,
+      ...parsedLog.fields,
+    }
+  })
+
+  return {
+    logEntries,
+    metadata: {
+      startTime: new Date(),
+      endTime: new Date(),
+      logCount: logEntries.length,
+      logLevels: [...new Set(logEntries.map((entry) => entry.level).filter(Boolean))],
+      sources: [...new Set(logEntries.map((entry) => entry.source).filter(Boolean))],
+    },
+  }
+}
+
+/**
+ * Parse a log line into structured data
+ * @param line Log line to parse
+ */
+function parseLogLine(line: string) {
+  // This is a simplified parser that tries to extract common log format elements
+  // In a real implementation, you would have more sophisticated parsing based on your log format
+
+  // Try to match common timestamp patterns
+  const timestampRegex = /\b(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)\b/
+  const timestampMatch = line.match(timestampRegex)
+
+  // Try to match common log level patterns
+  const levelRegex = /\b(DEBUG|INFO|WARN(?:ING)?|ERROR|CRITICAL|FATAL)\b/i
+  const levelMatch = line.match(levelRegex)
+
+  // Try to extract source (often in brackets or parentheses)
+  const sourceRegex = /\[([\w\-.]+)\]|$$([\w\-.]+)$$/
+  const sourceMatch = line.match(sourceRegex)
+
+  // Extract fields in key=value format
+  const fields: Record<string, string> = {}
+  const fieldRegex = /\b([\w\-.]+)=(["']?)([^"'\s]+|(?<=["'])[^"']*)\2/g
+  let fieldMatch
+
+  while ((fieldMatch = fieldRegex.exec(line)) !== null) {
+    fields[fieldMatch[1]] = fieldMatch[3]
+  }
+
+  // Extract message (everything after timestamp, level, and source)
+  let message = line
+  if (timestampMatch) {
+    message = message.replace(timestampMatch[0], "")
+  }
+  if (levelMatch) {
+    message = message.replace(levelMatch[0], "")
+  }
+  if (sourceMatch) {
+    message = message.replace(sourceMatch[0], "")
+  }
+
+  // Clean up the message
+  message = message.trim()
+
+  // If no timestamp was found, try to find a date pattern
+  if (!timestampMatch) {
+    const dateRegex = /\b(\d{1,2}\/\d{1,2}\/\d{2,4}|\d{1,2}-\d{1,2}-\d{2,4})\b/
+    const dateMatch = line.match(dateRegex)
+
+    if (dateMatch) {
+      const timeRegex = /\b(\d{1,2}:\d{1,2}(?::\d{1,2})?(?:\s*[AP]M)?)\b/i
+      const timeMatch = line.match(timeRegex)
+
+      if (timeMatch) {
+        const dateTimeStr = `${dateMatch[1]} ${timeMatch[1]}`
+        return {
+          timestamp: new Date(dateTimeStr).toISOString(),
+          level: levelMatch ? levelMatch[1].toUpperCase() : undefined,
+          source: sourceMatch ? sourceMatch[1] || sourceMatch[2] : undefined,
+          message,
+          fields,
+        }
+      }
+    }
+  }
+
+  return {
+    timestamp: timestampMatch ? timestampMatch[1] : new Date().toISOString(),
+    level: levelMatch ? levelMatch[1].toUpperCase() : undefined,
+    source: sourceMatch ? sourceMatch[1] || sourceMatch[2] : undefined,
+    message,
+    fields,
+  }
+}
