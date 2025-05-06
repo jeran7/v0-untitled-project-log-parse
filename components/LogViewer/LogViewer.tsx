@@ -63,16 +63,11 @@ export function LogViewer({ fileId, height = "100%" }: LogViewerProps) {
         (state: RootState) => state.logs.filters,
         (state: RootState) => state.files.files[fileId]?.logCount || 0,
         (entries, timeRange, filters, logCount) => {
-          // Log for debugging
-          console.log("Entries in store:", Object.keys(entries).length)
-          console.log("File log count:", logCount)
-
           // Early return if no logs
           if (logCount === 0) return []
 
           // Filter logs by file ID
           const fileEntries = Object.values(entries).filter((entry) => entry.fileId === fileId)
-          console.log("Filtered entries for file:", fileEntries.length)
 
           // Apply time range filter if present
           let filteredEntries = fileEntries

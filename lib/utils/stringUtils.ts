@@ -82,3 +82,14 @@ export function extractCommonPattern(strings: string[]): string | null {
 
   return pattern
 }
+
+/**
+ * Format a file size in bytes to a human-readable string
+ * @param bytes File size in bytes
+ * @returns Formatted string (e.g., "1.5 MB")
+ */
+export function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return bytes + " B"
+  else if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + " KB"
+  else return (bytes / (1024 * 1024)).toFixed(2) + " MB"
+}
